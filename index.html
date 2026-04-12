@@ -303,7 +303,7 @@ scene.background = new THREE.Color(0x7a8fa8);
     new THREE.CylinderGeometry(360, 360, 22, 32, 1, true),
     new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0.7, side: THREE.BackSide, fog: false, depthWrite: false })
   );
-  glow.position.set(MAP*CELL/2, 4, MAP*CELL/2);
+  glow.position.set(57, 4, 57);
   scene.add(glow);
 
   // ── Distant mountains — silhouette ring ──
@@ -325,7 +325,7 @@ scene.background = new THREE.Color(0x7a8fa8);
     mtTex.wrapS=THREE.RepeatWrapping; mtTex.repeat.set(3,1);
     const mtMat=new THREE.MeshBasicMaterial({map:mtTex,transparent:true,opacity:0.82,side:THREE.BackSide,fog:false,depthWrite:false});
     const mts=new THREE.Mesh(new THREE.CylinderGeometry(340,340,45,48,1,true),mtMat);
-    mts.position.set(MAP*CELL/2,-6,MAP*CELL/2); scene.add(mts);
+    mts.position.set(57,-6,57); scene.add(mts);
   }
 })();
 
