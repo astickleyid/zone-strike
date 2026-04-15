@@ -11,13 +11,13 @@
 body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;position:fixed;width:100%;height:100%;font-weight:600}
 #c{display:block;width:100vw;height:100vh;touch-action:none}
 #ui{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
-#xhair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:0;height:0}
-.xh{position:absolute;background:rgba(255,255,255,0.92);box-shadow:0 0 3px rgba(0,0,0,0.9)}
-.xh-t{width:2px;height:9px;left:-1px;top:-15px}
-.xh-b{width:2px;height:9px;left:-1px;top:6px}
-.xh-l{width:9px;height:2px;top:-1px;left:-15px}
-.xh-r{width:9px;height:2px;top:-1px;left:6px}
-.xh-dot{width:3px;height:3px;background:#f80;border-radius:50%;left:-1.5px;top:-1.5px;box-shadow:0 0 5px #f80}
+#xhair{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:0;height:0;transition:opacity 0.12s}
+.xh{position:absolute;background:rgba(255,255,255,0.88);box-shadow:0 0 2px rgba(0,0,0,0.95);transition:left 0.06s,top 0.06s,width 0.06s,height 0.06s}
+.xh-t{width:2px;height:8px;left:-1px;top:-14px}
+.xh-b{width:2px;height:8px;left:-1px;top:6px}
+.xh-l{width:8px;height:2px;top:-1px;left:-14px}
+.xh-r{width:8px;height:2px;top:-1px;left:6px}
+.xh-dot{width:3px;height:3px;background:#f80;border-radius:50%;left:-1.5px;top:-1.5px;box-shadow:0 0 5px #f80;transition:opacity 0.1s}
 #vig{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at 50% 55%,transparent 55%,rgba(0,0,0,0.72) 100%);pointer-events:none}
 #scanlines{position:absolute;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 4px);pointer-events:none;opacity:0.5}
 #chromatic{position:absolute;top:0;left:0;width:100%;height:100%;box-shadow:inset 0 0 120px rgba(0,0,0,0.45),inset 0 0 40px rgba(255,140,60,0.06);pointer-events:none}
@@ -71,7 +71,23 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 #abl-fill{height:100%;background:#fc0;transition:width 0.1s;box-shadow:0 0 6px #fc0}
 #abl-txt{font-size:11px;color:#fc0;letter-spacing:1px;text-shadow:0 0 4px #fc0}
 
-/* ── SPRINT ── */
+/* ── ADS BUTTON (mobile) ── */
+#ads-btn{position:absolute;left:50%;bottom:168px;transform:translateX(-50%);width:52px;height:32px;border-radius:16px;border:1.5px solid rgba(180,160,120,0.5);background:rgba(30,25,18,0.72);color:rgba(200,180,130,0.85);font-size:9px;letter-spacing:2px;display:flex;align-items:center;justify-content:center;font-weight:bold;z-index:15;touch-action:none;pointer-events:all;transition:background 0.1s,border-color 0.1s}
+#ads-btn.ads-active{background:rgba(255,160,40,0.22);border-color:rgba(255,180,60,0.75);color:#ffc840;box-shadow:0 0 12px rgba(255,160,40,0.35)}
+
+/* ── DIRECTIONAL DAMAGE ARCS ── */
+#dmg-dir{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:12}
+
+/* ── SCOPE OVERLAY (ADS) ── */
+#scope{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:3px;pointer-events:none;opacity:0;transition:opacity 0.08s;z-index:16}
+#scope-h{position:absolute;height:1px;background:rgba(255,255,255,0.55);top:0;left:50%;transform:translateX(-50%);width:0;transition:width 0.08s}
+#scope-v{position:absolute;width:1px;background:rgba(255,255,255,0.55);left:0;top:50%;transform:translateY(-50%);height:0;transition:height 0.08s}
+#scope-ring{position:absolute;border-radius:50%;border:1px solid rgba(255,255,255,0.3);top:50%;left:50%;transform:translate(-50%,-50%);width:0;height:0;transition:width 0.08s,height 0.08s}
+#scope-dot{position:absolute;width:3px;height:3px;background:#f80;border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 0 4px #f80}
+
+/* ── LOW AMMO PULSE ── */
+@keyframes ammoWarn{0%,100%{color:#fff}50%{color:#f44;text-shadow:0 0 8px #f44}}
+.ammo-low{animation:ammoWarn 0.55s infinite}
 #sprint-ind{position:absolute;left:50%;bottom:240px;transform:translateX(-50%);font-size:9px;letter-spacing:3px;color:#fc0;opacity:0;transition:opacity 0.2s;text-shadow:0 0 8px #fc0;background:rgba(10,9,6,0.85);padding:4px 12px;border:1px solid rgba(255,200,0,0.35);white-space:nowrap;pointer-events:none}
 
 /* ── STREAK / NOTIFY ── */
@@ -140,6 +156,13 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
   <div id="scanlines"></div>
   <div id="chromatic"></div>
   <div id="dmg"></div>
+  <div id="dmg-dir"><canvas id="ddc" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas></div>
+  <div id="scope">
+    <div id="scope-h"></div>
+    <div id="scope-v"></div>
+    <div id="scope-ring"></div>
+    <div id="scope-dot"></div>
+  </div>
   <div id="low-hp"></div>
   <div id="xhair">
     <div class="xh xh-t"></div><div class="xh xh-b"></div>
@@ -192,6 +215,7 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
     <div id="joy-base"></div>
     <div id="joy-stick"></div>
   </div>
+  <div id="ads-btn">ADS</div>
   <div id="mobile-btns">
     <button class="mbtn" id="ability-btn"><span class="mbtn-icon">E</span></button>
     <button class="mbtn" id="reload-btn"><span class="mbtn-icon">R</span></button>
@@ -403,6 +427,29 @@ function playSound(type) {
       const o=ac.createOscillator(); o.type='square'; o.frequency.value=80;
       g.gain.setValueAtTime(0.1,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.08);
       o.connect(g); o.start(now); o.stop(now+0.08);
+    } else if (type === 'footL' || type === 'footR') {
+      // Soft footstep thud — low click
+      const buf=ac.createBuffer(1,ac.sampleRate*0.055,ac.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length*0.18));
+      const n=ac.createBufferSource(); n.buffer=buf;
+      const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=type==='footL'?320:290;
+      const fg=ac.createGain(); fg.gain.setValueAtTime(0.08,now); fg.gain.exponentialRampToValueAtTime(0.001,now+0.055);
+      n.connect(lp); lp.connect(fg); fg.connect(ac.destination); n.start(now); n.stop(now+0.06);
+    } else if (type === 'ads') {
+      // Short mechanical click for ADS
+      const o=ac.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(440,now); o.frequency.exponentialRampToValueAtTime(280,now+0.04);
+      g.gain.setValueAtTime(0.06,now); g.gain.exponentialRampToValueAtTime(0.001,now+0.05);
+      o.connect(g); o.start(now); o.stop(now+0.05);
+    } else if (type === 'botshoot') {
+      // Distant muffled crack — panned from data in args
+      const buf=ac.createBuffer(1,ac.sampleRate*0.09,ac.sampleRate);
+      const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(d.length*0.22));
+      const n=ac.createBufferSource(); n.buffer=buf;
+      const lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=900;
+      const bg=ac.createGain(); bg.gain.setValueAtTime(0.14,now); bg.gain.exponentialRampToValueAtTime(0.001,now+0.09);
+      n.connect(lp); lp.connect(bg); bg.connect(ac.destination); n.start(now); n.stop(now+0.1);
     }
   } catch(e){}
 }
@@ -424,6 +471,11 @@ let pupSpawnT = 0;
 let hitMarkT = 0;
 let reloadAnim = null;
 let respawnCountdown = null;
+let adsActive = false, adsFOV = 0; // 0=hip, 1=ADS (lerp target)
+let shakeT = 0, shakeAmt = 0; // screen shake
+let dmgDirs = []; // [{angle, life}] directional hit indicators
+let footT = 0, lastFootStep = 0; // footstep timer
+let xhairSpread = 0; // dynamic crosshair spread (0=tight, 1=wide)
 
 const player = {
   x: 10, z: 10,
@@ -1430,7 +1482,18 @@ function botShoot(b) {
   const dz = player.z-b.z+(Math.random()-0.5)*acc*22;
   const dist = Math.sqrt(dx*dx+dz*dz);
   const hitChance = Math.max(0.08, 1-dist/b.range*0.62);
-  if (Math.random() < hitChance) damagePlayer(b.dmg);
+
+  // Spatial shoot sound — volume drops with distance
+  const vol = Math.max(0.02, 1 - dist/38);
+  if(Math.random() < Math.min(1, vol*2.5)) playSound('botshoot');
+
+  if (Math.random() < hitChance) {
+    damagePlayer(b.dmg);
+    // Directional indicator — angle from player facing toward the bot
+    const angleToBot = Math.atan2(b.x - player.x, b.z - player.z);
+    const relAngle = angleToBot - yaw; // relative to camera facing
+    dmgDirs.push({ angle: relAngle, life: 1.2 });
+  }
 }
 
 function randomOpen() {
@@ -1469,10 +1532,15 @@ function damagePlayer(dmg) {
   if (shieldActive) dmg *= 0.28;
   player.hp = Math.max(0, player.hp-dmg);
   updHP();
+  // Screen flash
   const dmgEl = document.getElementById('dmg');
-  dmgEl.style.opacity = '0.8';
-  setTimeout(() => dmgEl.style.opacity='0', 110);
+  dmgEl.style.opacity = Math.min(0.9, 0.4 + dmg/80);
+  setTimeout(() => dmgEl.style.opacity='0', 120);
+  // Screen shake — proportional to damage
+  shakeT = Math.min(0.35, dmg / 60);
+  shakeAmt = Math.min(1.8, dmg / 22);
   document.getElementById('low-hp').style.display = player.hp < 28 ? 'block' : 'none';
+  playSound('hit');
   if (player.hp <= 0) playerDeath();
 }
 
@@ -1657,7 +1725,12 @@ function explodeGrenade(g) {
     if (d<5.5) damageBot(b, 85*(1-d/5.5));
   });
   const pd=Math.sqrt((player.x-ex)**2+(player.z-ez)**2);
-  if (pd<4.5 && player.alive) damagePlayer(55*(1-pd/4.5));
+  if (pd<4.5 && player.alive) {
+    damagePlayer(55*(1-pd/4.5));
+  } else if(pd < 9 && player.alive) {
+    // Near miss — concussion shake only
+    shakeT = 0.28; shakeAmt = 1.2;
+  }
 }
 
 function updateGrenades(dt) {
@@ -1821,6 +1894,32 @@ document.getElementById('ability-btn').addEventListener('touchstart', e=>{
   e.preventDefault(); e.stopPropagation();
   if(gameActive) useAbility();
 },{passive:false});
+document.getElementById('ads-btn').addEventListener('touchstart', e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(gameActive) toggleADS(true);
+},{passive:false});
+document.getElementById('ads-btn').addEventListener('touchend', e=>{
+  e.preventDefault(); e.stopPropagation();
+  toggleADS(false);
+},{passive:false});
+document.getElementById('ads-btn').addEventListener('touchcancel', e=>{
+  toggleADS(false);
+},{passive:false});
+
+function toggleADS(on) {
+  adsActive = on;
+  playSound('ads');
+  document.getElementById('ads-btn').classList.toggle('ads-active', on);
+  document.getElementById('scope').style.opacity = on ? '1' : '0';
+  document.getElementById('xhair').style.opacity = on ? '0' : '1';
+  // Scope dimensions
+  const sW = on ? Math.min(W, H) * 0.7 : 0;
+  const sH = on ? Math.min(W, H) * 0.7 : 0;
+  document.getElementById('scope-h').style.width = on ? (sW*0.44)+'px' : '0';
+  document.getElementById('scope-v').style.height = on ? (sH*0.44)+'px' : '0';
+  document.getElementById('scope-ring').style.width  = on ? sW*0.18+'px' : '0';
+  document.getElementById('scope-ring').style.height = on ? sH*0.18+'px' : '0';
+}
 
 // Desktop controls
 const keys = {};
@@ -1841,14 +1940,18 @@ canvas.addEventListener('mousedown', e=>{
   if(!gameActive) return;
   if(document.pointerLockElement!==canvas) { canvas.requestPointerLock(); return; }
   if(e.button===0){ mouseDown=true; shoot(); holdShootInterval=setInterval(()=>{if(gameActive)shoot();},108); }
+  if(e.button===2){ e.preventDefault(); toggleADS(true); }
 });
-canvas.addEventListener('mouseup', ()=>{
-  mouseDown=false; clearInterval(holdShootInterval); holdShootInterval=null;
+canvas.addEventListener('mouseup', e=>{
+  if(e.button===0){ mouseDown=false; clearInterval(holdShootInterval); holdShootInterval=null; }
+  if(e.button===2){ toggleADS(false); }
 });
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
 document.addEventListener('mousemove', e=>{
   if(!gameActive||document.pointerLockElement!==canvas) return;
-  yaw-=e.movementX*0.0022;
-  pitch=Math.max(-0.44,Math.min(0.44,pitch-e.movementY*0.0022));
+  const sens = adsActive ? 0.0013 : 0.0022; // tighter while ADS
+  yaw -= e.movementX * sens;
+  pitch = Math.max(-0.52, Math.min(0.52, pitch - e.movementY * sens));
 });
 document.addEventListener('pointerlockchange', ()=>{
   const locked=document.pointerLockElement===canvas;
@@ -1877,10 +1980,13 @@ function shoot() {
     }, 52);
   }
   if(weaponGroup){
-    weaponGroup.position.z=weaponBaseZ+0.03;
-    weaponGroup.rotation.x=-0.045;
-    setTimeout(()=>{if(weaponGroup){weaponGroup.position.z=weaponBaseZ;weaponGroup.rotation.x=0;}},72);
+    weaponGroup.position.z = weaponBaseZ+0.03;
+    weaponGroup.rotation.x = adsActive ? -0.025 : -0.048;
+    setTimeout(()=>{ if(weaponGroup){ weaponGroup.position.z=weaponBaseZ; weaponGroup.rotation.x=0; } }, 72);
   }
+  // Micro recoil camera kick
+  pitch -= { assault:0.006, recon:0.004, heavy:0.012 }[player.cls];
+  shakeT = 0.055; shakeAmt = adsActive ? 0.15 : 0.35;
 
   const spread = { assault:0.016, recon:0.013, heavy:0.028 }[player.cls];
   const dir = new THREE.Vector3(
@@ -1999,9 +2105,12 @@ function updHP() {
 }
 
 function updAmmo() {
-  document.getElementById('ammo-big').textContent=player.ammo;
-  document.getElementById('ammo-res').textContent='/ '+player.reserve;
-  document.getElementById('ammo-big').style.color=player.ammo===0?'#c44':'#fff';
+  const el = document.getElementById('ammo-big');
+  el.textContent = player.ammo;
+  document.getElementById('ammo-res').textContent = '/ '+player.reserve;
+  const low = player.ammo <= Math.ceil(player.maxAmmo * 0.25);
+  el.style.color = player.ammo === 0 ? '#c44' : '#fff';
+  el.classList.toggle('ammo-low', low && player.ammo > 0);
 }
 
 function updScore() {
@@ -2400,18 +2509,35 @@ function animate() {
   requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(), 0.05);
 
-  // ── Apply accumulated mobile aim deltas (CoD Mobile pattern: flush per frame) ──
+  // ── Apply accumulated mobile aim deltas ──
   if(isMobile && (aimDX !== 0 || aimDY !== 0)){
-    yaw   -= aimDX * AIM_SENS;
-    pitch  = Math.max(-0.52, Math.min(0.52, pitch - aimDY * AIM_SENS));
-    aimDX  = 0;
-    aimDY  = 0;
+    const adsSens = adsActive ? 0.55 : 1.0; // tighter ADS on mobile too
+    yaw   -= aimDX * AIM_SENS * adsSens;
+    pitch  = Math.max(-0.52, Math.min(0.52, pitch - aimDY * AIM_SENS * adsSens));
+    aimDX  = 0; aimDY  = 0;
   }
 
-  // Camera orientation
+  // ── ADS FOV lerp ──
+  const targetFOV = adsActive ? (isMobile ? 44 : 38) : (isMobile ? 72 : 76);
+  const curFOV = cam.fov;
+  if(Math.abs(curFOV - targetFOV) > 0.1){
+    cam.fov += (targetFOV - curFOV) * 0.18;
+    cam.updateProjectionMatrix();
+  }
+
+  // ── Screen shake ──
+  let shakeX = 0, shakeY = 0;
+  if(shakeT > 0){
+    shakeT = Math.max(0, shakeT - dt);
+    const s = shakeAmt * (shakeT / 0.35);
+    shakeX = (Math.random()-0.5)*s;
+    shakeY = (Math.random()-0.5)*s*0.6;
+  }
+
+  // Camera orientation + shake offset
   cam.rotation.order='YXZ';
-  cam.rotation.y=yaw;
-  cam.rotation.x=pitch;
+  cam.rotation.y = yaw + shakeX * 0.012;
+  cam.rotation.x = pitch + shakeY * 0.012;
 
   // Desktop keyboard → joy-style input
   if(!isMobile){
@@ -2434,14 +2560,44 @@ function animate() {
     if(!isWall(player.x+pad,player.z+mz)&&!isWall(player.x-pad,player.z+mz)) player.z+=mz;
 
     const moving=Math.abs(joyX)>0.08||Math.abs(joyY)>0.08;
-    const bobAmt=moving?0.016:0.004;
-    cam.position.set(player.x,1.7+Math.sin(Date.now()*0.0065)*bobAmt,player.z);
+    const bobAmt = adsActive ? 0.002 : (moving ? 0.016 : 0.004);
+    cam.position.set(player.x, 1.7+Math.sin(Date.now()*0.0065)*bobAmt + shakeY*0.04, player.z);
+
+    // ── Dynamic crosshair spread ──
+    const targetSpread = adsActive ? 0 : (moving ? (sprintActive?1:0.55) : (shootCd>0 ? 0.65 : 0.08));
+    xhairSpread += (targetSpread - xhairSpread) * 0.18;
+    const gap = Math.round(xhairSpread * 8);
+    const xhT = document.getElementById('xhair');
+    if(!adsActive){
+      xhT.querySelector('.xh-t').style.top   = (-14-gap)+'px';
+      xhT.querySelector('.xh-b').style.top   = (6+gap)+'px';
+      xhT.querySelector('.xh-l').style.left  = (-14-gap)+'px';
+      xhT.querySelector('.xh-r').style.left  = (6+gap)+'px';
+      xhT.querySelector('.xh-dot').style.opacity = targetSpread < 0.2 ? '1' : '0.4';
+    }
+
+    // ── Footstep audio ──
+    if(moving && !adsActive){
+      footT += dt;
+      const stepRate = sprintActive ? 0.28 : 0.42;
+      if(footT > stepRate){
+        footT = 0;
+        lastFootStep = !lastFootStep;
+        playSound(lastFootStep ? 'footL' : 'footR');
+      }
+    } else { footT = Math.max(0, footT - dt*2); }
 
     // Weapon sway
     if(weaponGroup){
       weaponSwayT+=dt;
-      const swayA=moving?0.009:0.0022;
-      weaponGroup.rotation.z=Math.sin(weaponSwayT*(moving?3.6:1.1))*swayA;
+      const swayA = adsActive ? 0.001 : (moving?0.009:0.0022);
+      const swayRate = adsActive ? 0.8 : (moving ? 3.6 : 1.1);
+      weaponGroup.rotation.z=Math.sin(weaponSwayT*swayRate)*swayA;
+      // ADS: weapon moves to center
+      const adsOffX = adsActive ? -0.24 : 0;
+      const adsOffY = adsActive ? 0.18  : 0;
+      weaponGroup.position.x += (adsOffX - weaponGroup.position.x)*0.18;
+      weaponGroup.position.y += (adsOffY - weaponGroup.position.y)*0.18;
       weaponGroup.rotation.x+=((0)-weaponGroup.rotation.x)*0.12;
     }
   }
@@ -2461,6 +2617,7 @@ function animate() {
   drawMinimap();
   if(radarDish) radarDish.rotation.y += dt * 0.8;
   updateDust(dt);
+  drawDmgDirs(dt);
 
   renderer.render(scene, cam);
 }
@@ -2473,6 +2630,7 @@ window.addEventListener('resize', ()=>{
   renderer.setSize(W,H);
   cam.aspect=W/H;
   cam.updateProjectionMatrix();
+  if(ddCtx){ ddCanvas.width=W; ddCanvas.height=H; }
 });
 
 // ─────────────────────────────────────────
@@ -2572,6 +2730,47 @@ function buildAtmosphere() {
   for(let side of[-1,1]){
     const arr=new THREE.Mesh(new THREE.PlaneGeometry(0.9,1.4),paintM);
     arr.rotation.x=-Math.PI/2; arr.position.set(mw+side*1.2,0.013,mw-18); scene.add(arr);
+  }
+}
+
+// ─────────────────────────────────────────
+//  DIRECTIONAL DAMAGE INDICATOR
+// ─────────────────────────────────────────
+const ddCanvas = document.getElementById('ddc');
+let ddCtx = null;
+function drawDmgDirs(dt) {
+  if(dmgDirs.length === 0) return;
+  if(!ddCtx){
+    ddCanvas.width  = window.innerWidth;
+    ddCanvas.height = window.innerHeight;
+    ddCtx = ddCanvas.getContext('2d');
+  }
+  ddCtx.clearRect(0, 0, ddCanvas.width, ddCanvas.height);
+  const cx = ddCanvas.width  / 2;
+  const cy = ddCanvas.height / 2;
+  const r1 = Math.min(cx, cy) * 0.28; // inner radius
+  const r2 = r1 * 1.45;               // outer radius
+  const arcW = 0.55; // radians
+
+  for(let i = dmgDirs.length-1; i >= 0; i--){
+    const d = dmgDirs[i];
+    d.life -= dt;
+    if(d.life <= 0){ dmgDirs.splice(i, 1); continue; }
+    const alpha = Math.min(1, d.life * 1.8);
+    const a = d.angle - Math.PI/2; // canvas 0 = top = forward
+    ddCtx.save();
+    ddCtx.translate(cx, cy);
+    ddCtx.beginPath();
+    ddCtx.arc(0, 0, r2, a - arcW/2, a + arcW/2);
+    ddCtx.arc(0, 0, r1, a + arcW/2, a - arcW/2, true);
+    ddCtx.closePath();
+    const grad = ddCtx.createRadialGradient(0,0,r1, 0,0,r2);
+    grad.addColorStop(0, `rgba(220,40,40,0)`);
+    grad.addColorStop(0.4, `rgba(230,50,30,${alpha*0.75})`);
+    grad.addColorStop(1, `rgba(255,80,30,${alpha*0.4})`);
+    ddCtx.fillStyle = grad;
+    ddCtx.fill();
+    ddCtx.restore();
   }
 }
 
