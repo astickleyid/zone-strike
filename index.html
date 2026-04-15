@@ -77,18 +77,22 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 /* ── STREAK / NOTIFY ── */
 #streak-notify{position:absolute;top:30%;left:50%;transform:translateX(-50%);font-size:16px;font-weight:bold;letter-spacing:4px;color:#fc0;text-shadow:0 0 20px #fc0,0 2px 6px #000;opacity:0;pointer-events:none;transition:opacity 0.3s;z-index:20}
 
-/* ── JOYSTICK ── */
-#joystick{position:absolute;left:20px;bottom:118px;width:124px;height:124px;pointer-events:all;touch-action:none}
-#joy-base{position:absolute;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle,rgba(80,65,45,0.42),rgba(45,38,28,0.28));border:2px solid rgba(180,160,120,0.38);box-shadow:inset 0 0 28px rgba(0,0,0,0.5),0 0 18px rgba(180,160,120,0.15)}
-#joy-stick{position:absolute;width:50px;height:50px;border-radius:50%;background:radial-gradient(circle,rgba(210,190,150,0.72),rgba(170,150,110,0.52));border:2px solid rgba(210,185,130,0.85);box-shadow:0 3px 16px rgba(0,0,0,0.65),inset 0 0 14px rgba(255,240,200,0.35);left:50%;top:50%;transform:translate(-50%,-50%);transition:none}
+/* ── TOUCH LAYER (CoD Mobile pattern — single global handler) ── */
+#touch-layer{position:fixed;top:0;left:0;width:100%;height:100%;z-index:8;touch-action:none;pointer-events:none}
+#touch-layer.active{pointer-events:all}
 
-/* ── MOBILE BUTTONS ── */
-#mobile-btns{position:absolute;right:16px;bottom:118px;pointer-events:all;display:flex;flex-direction:column;gap:12px;align-items:flex-end}
-.mbtn{width:62px;height:62px;border-radius:50%;border:2px solid rgba(180,160,120,0.45);background:radial-gradient(circle,rgba(80,65,45,0.45),rgba(45,38,28,0.28));color:#fff;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;font-weight:bold;box-shadow:0 4px 18px rgba(0,0,0,0.65);transition:all 0.08s;touch-action:none}
+/* ── DYNAMIC FLOATING JOYSTICK ── */
+#joystick{position:absolute;pointer-events:none;touch-action:none;opacity:0;transition:opacity 0.12s;z-index:9}
+#joy-base{position:absolute;width:110px;height:110px;border-radius:50%;background:radial-gradient(circle,rgba(80,65,45,0.35),rgba(45,38,28,0.22));border:1.5px solid rgba(180,160,120,0.32);box-shadow:inset 0 0 22px rgba(0,0,0,0.45),0 0 14px rgba(180,160,120,0.1);transform:translate(-50%,-50%)}
+#joy-stick{position:absolute;width:46px;height:46px;border-radius:50%;background:radial-gradient(circle,rgba(210,190,150,0.78),rgba(170,150,110,0.55));border:2px solid rgba(210,185,130,0.88);box-shadow:0 3px 14px rgba(0,0,0,0.6),inset 0 0 12px rgba(255,240,200,0.3);transform:translate(-50%,-50%);transition:none}
+
+/* ── MOBILE BUTTONS — sit ABOVE touch layer ── */
+#mobile-btns{position:absolute;right:16px;bottom:108px;pointer-events:all;display:flex;flex-direction:column;gap:14px;align-items:flex-end;z-index:15;touch-action:none}
+.mbtn{width:64px;height:64px;border-radius:50%;border:2px solid rgba(180,160,120,0.45);background:radial-gradient(circle,rgba(80,65,45,0.45),rgba(45,38,28,0.28));color:#fff;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;font-weight:bold;box-shadow:0 4px 18px rgba(0,0,0,0.65);transition:all 0.08s;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
 .mbtn:active{transform:scale(0.91);background:radial-gradient(circle,rgba(110,90,60,0.55),rgba(75,62,45,0.38))}
 .mbtn-icon{font-size:22px;line-height:1;text-shadow:0 2px 4px #000}
-#shoot-btn{width:76px;height:76px;border-color:rgba(200,130,50,0.65);background:radial-gradient(circle,rgba(160,70,30,0.52),rgba(120,50,20,0.32));box-shadow:0 4px 20px rgba(160,55,0,0.48),0 0 26px rgba(200,130,50,0.28)}
-#shoot-btn:active{border-color:rgba(230,150,70,0.9);box-shadow:0 2px 12px rgba(190,75,15,0.7),0 0 34px rgba(230,150,70,0.48)}
+#shoot-btn{width:80px;height:80px;border-color:rgba(200,130,50,0.7);background:radial-gradient(circle,rgba(160,70,30,0.55),rgba(120,50,20,0.35));box-shadow:0 4px 22px rgba(160,55,0,0.5),0 0 28px rgba(200,130,50,0.3)}
+#shoot-btn:active{border-color:rgba(230,150,70,0.95);box-shadow:0 2px 12px rgba(190,75,15,0.75),0 0 36px rgba(230,150,70,0.52)}
 
 /* ── MINIMAP ── */
 #mm{position:absolute;bottom:14px;right:14px;width:90px;height:90px;background:rgba(14,12,9,0.96);border:2px solid rgba(180,160,120,0.42);overflow:hidden;box-shadow:0 0 20px rgba(180,160,120,0.25)}
@@ -130,6 +134,7 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="touch-layer"></div>
 <div id="ui">
   <div id="vig"></div>
   <div id="scanlines"></div>
@@ -1558,95 +1563,151 @@ function updateGrenades(dt) {
 }
 
 // ─────────────────────────────────────────
-//  MOBILE CONTROLS
+//  MOBILE CONTROLS — CoD Mobile / PUBG pattern
+//  Single global touch layer. Every finger tracked by identifier.
+//  Left 45% = floating joystick. Right 55% = free-look delta.
+//  Buttons sit above at z-index:15 and handle own events independently.
 // ─────────────────────────────────────────
 let joyActive=false, joyX=0, joyY=0;
-let touchAimId=null, lastAimX=0, lastAimY=0;
 let sprintActive=false, lastJoyTap=0;
 let holdShootInterval=null;
 
+// ── Touch registry ──
+// Each active touch: { type: 'move'|'look', cx, cy, bx, by }
+const touchReg = new Map();
+let aimDX = 0, aimDY = 0; // accumulated this frame
+
+// ── Joystick state ──
+let joyTouchId = null;
+let joyBX = 0, joyBY = 0; // base position (where finger landed)
+const JOY_RADIUS = 52;     // max stick travel px
+
+const joyEl    = document.getElementById('joystick');
+const joyBase  = document.getElementById('joy-base');
 const joyStick = document.getElementById('joy-stick');
-const joyContainer = document.getElementById('joystick');
 
-joyContainer.addEventListener('touchstart', e=>{
-  if(!gameActive) return;
-  e.preventDefault(); e.stopPropagation();
-  joyActive=true; updateJoy(e.touches[0]);
-  const now=Date.now();
-  if(now-lastJoyTap<300){ sprintActive=!sprintActive; document.getElementById('sprint-ind').style.opacity=sprintActive?'1':'0'; }
-  lastJoyTap=now;
-},{passive:false});
-joyContainer.addEventListener('touchmove', e=>{
-  if(!joyActive||!gameActive) return;
-  e.preventDefault(); updateJoy(e.touches[0]);
-},{passive:false});
-joyContainer.addEventListener('touchend', e=>{
-  e.preventDefault(); joyActive=false; joyX=0; joyY=0;
-  joyStick.style.left='50%'; joyStick.style.top='50%';
-},{passive:false});
-
-function updateJoy(touch) {
-  const rect=joyContainer.getBoundingClientRect();
-  const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
-  let dx=touch.clientX-cx, dy=touch.clientY-cy;
-  const dist=Math.sqrt(dx*dx+dy*dy);
-  const maxD=rect.width*0.38;
-  if(dist>maxD){dx=dx/dist*maxD; dy=dy/dist*maxD;}
-  joyX=dx/maxD; joyY=dy/maxD;
-  joyStick.style.left=`calc(50% + ${dx}px)`;
-  joyStick.style.top=`calc(50% + ${dy}px)`;
+function showJoy(x, y) {
+  joyEl.style.left = x + 'px';
+  joyEl.style.top  = y + 'px';
+  joyEl.style.opacity = '1';
+  joyBase.style.left = '0'; joyBase.style.top = '0';
+  joyStick.style.left = '0px'; joyStick.style.top = '0px';
+}
+function moveJoy(dx, dy) {
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  const clamped = Math.min(dist, JOY_RADIUS);
+  const angle   = Math.atan2(dy, dx);
+  const sx = Math.cos(angle)*clamped;
+  const sy = Math.sin(angle)*clamped;
+  joyStick.style.transform = `translate(calc(-50% + ${sx}px), calc(-50% + ${sy}px))`;
+  joyX = sx/JOY_RADIUS;
+  joyY = sy/JOY_RADIUS;
+}
+function hideJoy() {
+  joyEl.style.opacity = '0';
+  joyX = 0; joyY = 0;
+  joyTouchId = null;
 }
 
-canvas.addEventListener('touchstart', e=>{
+// ── Sensitivity ──
+// Matches CoD Mobile "medium" feel — 0.0038 rad/px linear + light acceleration
+const AIM_SENS = 0.0038;
+const AIM_ACCEL = 2.2; // multiplier for fast swipes
+function applyAimDelta(dx, dy) {
+  // Exponential curve: small moves are precise, fast flicks accelerate
+  const adx = dx * (1 + Math.abs(dx) * AIM_ACCEL * 0.01);
+  const ady = dy * (1 + Math.abs(dy) * AIM_ACCEL * 0.01);
+  aimDX += adx;
+  aimDY += ady;
+}
+
+// ── Single global touch layer ──
+const touchLayer = document.getElementById('touch-layer');
+if(isMobile) touchLayer.classList.add('active');
+
+touchLayer.addEventListener('touchstart', e => {
   if(!gameActive) return;
-  for(let t of e.touches){
-    const jR=joyContainer.getBoundingClientRect();
-    const bR=document.getElementById('mobile-btns').getBoundingClientRect();
-    const tx=t.clientX, ty=t.clientY;
-    const inJ=tx>=jR.left&&tx<=jR.right&&ty>=jR.top&&ty<=jR.bottom;
-    const inB=tx>=bR.left&&tx<=bR.right&&ty>=bR.top&&ty<=bR.bottom;
-    if(inJ||inB) continue;
-    if(touchAimId===null){touchAimId=t.identifier; lastAimX=t.clientX; lastAimY=t.clientY; break;}
-  }
-},{passive:true});
-canvas.addEventListener('touchmove', e=>{
-  if(!gameActive||touchAimId===null) return;
   e.preventDefault();
-  for(let t of e.touches){
-    if(t.identifier===touchAimId){
-      yaw-=(t.clientX-lastAimX)*0.0042;
-      pitch=Math.max(-0.44,Math.min(0.44,pitch-(t.clientY-lastAimY)*0.0042));
-      lastAimX=t.clientX; lastAimY=t.clientY; break;
+  for(const t of e.changedTouches) {
+    const x = t.clientX, y = t.clientY;
+    const W2 = window.innerWidth * 0.45; // left 45% = move zone
+    if(x < W2) {
+      // ── LEFT ZONE — joystick ──
+      if(joyTouchId === null) {
+        joyTouchId = t.identifier;
+        joyBX = x; joyBY = y;
+        showJoy(x, y);
+        joyActive = true;
+        const now = Date.now();
+        if(now - lastJoyTap < 280) {
+          sprintActive = !sprintActive;
+          document.getElementById('sprint-ind').style.opacity = sprintActive ? '1' : '0';
+        }
+        lastJoyTap = now;
+        touchReg.set(t.identifier, {type:'move'});
+      }
+    } else {
+      // ── RIGHT ZONE — look ──
+      // Only one look touch at a time; additional right touches are ignored
+      // (they won't conflict with shoot button which handles its own events)
+      let hasLook = false;
+      for(const [,v] of touchReg) if(v.type==='look') { hasLook=true; break; }
+      if(!hasLook) {
+        touchReg.set(t.identifier, {type:'look', lx: x, ly: y});
+      }
     }
   }
 },{passive:false});
-canvas.addEventListener('touchend', e=>{
-  if(!gameActive) return;
-  for(let t of e.changedTouches){
-    if(t.identifier===touchAimId){touchAimId=null; lastAimX=0; lastAimY=0; break;}
-  }
-},{passive:true});
 
+touchLayer.addEventListener('touchmove', e => {
+  if(!gameActive) return;
+  e.preventDefault();
+  for(const t of e.changedTouches) {
+    const reg = touchReg.get(t.identifier);
+    if(!reg) continue;
+    if(reg.type === 'move' && t.identifier === joyTouchId) {
+      moveJoy(t.clientX - joyBX, t.clientY - joyBY);
+    } else if(reg.type === 'look') {
+      applyAimDelta(t.clientX - reg.lx, t.clientY - reg.ly);
+      reg.lx = t.clientX; reg.ly = t.clientY;
+    }
+  }
+},{passive:false});
+
+function endTouch(id) {
+  const reg = touchReg.get(id);
+  if(!reg) return;
+  touchReg.delete(id);
+  if(reg.type === 'move') { hideJoy(); joyActive = false; }
+}
+
+touchLayer.addEventListener('touchend',    e=>{ e.preventDefault(); for(const t of e.changedTouches) endTouch(t.identifier); },{passive:false});
+touchLayer.addEventListener('touchcancel', e=>{ e.preventDefault(); for(const t of e.changedTouches) endTouch(t.identifier); },{passive:false});
+
+// ── Shoot button — sits above touch layer, handles own events ──
 const shootBtn = document.getElementById('shoot-btn');
 shootBtn.addEventListener('touchstart', e=>{
-  e.preventDefault();
+  e.preventDefault(); e.stopPropagation();
   if(!gameActive) return;
   shoot();
-  holdShootInterval=setInterval(()=>{if(gameActive)shoot();}, 108);
+  holdShootInterval = setInterval(()=>{ if(gameActive) shoot(); }, 100);
 },{passive:false});
 shootBtn.addEventListener('touchend', e=>{
-  e.preventDefault();
+  e.preventDefault(); e.stopPropagation();
   clearInterval(holdShootInterval); holdShootInterval=null;
 },{passive:false});
 shootBtn.addEventListener('touchcancel', e=>{
+  e.preventDefault();
   clearInterval(holdShootInterval); holdShootInterval=null;
 },{passive:false});
 
 document.getElementById('reload-btn').addEventListener('touchstart', e=>{
-  e.preventDefault(); if(gameActive&&!reloading) doReload();
+  e.preventDefault(); e.stopPropagation();
+  if(gameActive && !reloading) doReload();
 },{passive:false});
 document.getElementById('ability-btn').addEventListener('touchstart', e=>{
-  e.preventDefault(); if(gameActive) useAbility();
+  e.preventDefault(); e.stopPropagation();
+  if(gameActive) useAbility();
 },{passive:false});
 
 // Desktop controls
@@ -2069,6 +2130,7 @@ function startGame() {
 
 function initGame() {
   gameActive=true;
+  if(isMobile) touchLayer.classList.add('active');
   score.you=0; score.enemy=0;
   kills=0; deaths=0; captures=0;
   roundSec=180;
@@ -2120,8 +2182,10 @@ function initGame() {
 
 function endGame() {
   gameActive=false;
-  if(roundTimer){clearInterval(roundTimer);roundTimer=null;}
+  // Reset all touch state
+  touchReg.clear(); hideJoy(); joyActive=false; aimDX=0; aimDY=0;
   if(holdShootInterval){clearInterval(holdShootInterval);holdShootInterval=null;}
+  if(roundTimer){clearInterval(roundTimer);roundTimer=null;}
   if(reloadAnim){clearTimeout(reloadAnim);reloadAnim=null;}
   if(respawnCountdown){clearInterval(respawnCountdown);respawnCountdown=null;}
   if(document.pointerLockElement===canvas) document.exitPointerLock();
@@ -2161,6 +2225,14 @@ function animate() {
   if(!gameActive) return;
   requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(), 0.05);
+
+  // ── Apply accumulated mobile aim deltas (CoD Mobile pattern: flush per frame) ──
+  if(isMobile && (aimDX !== 0 || aimDY !== 0)){
+    yaw   -= aimDX * AIM_SENS;
+    pitch  = Math.max(-0.52, Math.min(0.52, pitch - aimDY * AIM_SENS));
+    aimDX  = 0;
+    aimDY  = 0;
+  }
 
   // Camera orientation
   cam.rotation.order='YXZ';
