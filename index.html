@@ -1269,50 +1269,141 @@ function hasLOS(ax, az, ay, bx, bz, by) {
 // ─────────────────────────────────────────
 //  BOT AI
 // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+//  BOT AI — Tactical with zone awareness
+// ─────────────────────────────────────────
 function botAI(b, dt) {
   if (!b.alive || !gameActive) return;
   b.hpBar.lookAt(cam.position);
   b.stateT += dt;
-  b.shootCd = Math.max(0, b.shootCd-dt);
+  b.shootCd  = Math.max(0, b.shootCd - dt);
+  if(b.strafeT !== undefined) b.strafeT = Math.max(0, b.strafeT - dt);
 
-  const dx = player.x-b.x, dz = player.z-b.z;
-  const dist = Math.sqrt(dx*dx+dz*dz);
-  const los  = player.alive && dist < 32 && hasLOS(b.x, b.z, 1.5, player.x, player.z, 1.7);
+  const dx = player.x - b.x, dz = player.z - b.z;
+  const dist = Math.sqrt(dx*dx + dz*dz);
+  const los  = player.alive && dist < 36 && hasLOS(b.x, b.z, 1.5, player.x, player.z, 1.7);
 
-  // State transitions
-  if (!player.alive) {
-    b.state = 'patrol';
-  } else if (b.cls === 'recon' && b.hp < b.maxHp*0.22) {
-    b.state = 'flee';
-  } else if (los && dist < b.range) {
-    b.state = 'attack'; b.losLostT = 0;
-  } else if (dist < 30) {
-    if (los) b.losLostT = 0; else b.losLostT += dt;
-    b.state = b.losLostT < 2.8 ? 'chase' : 'patrol';
-  } else {
-    b.state = 'patrol';
+  // ── Find highest-value zone target ──
+  // Priority: uncaptured > enemy-owned > player-owned (defend)
+  function getBestZoneTarget() {
+    let best = null, bestScore = -Infinity;
+    for(const z of zones) {
+      let score = 0;
+      if(z.owner === 'neutral')  score = 100 - Math.sqrt((b.x-z.x)**2+(b.z-z.z)**2)*0.4;
+      else if(z.owner === 'you') score = 80  - Math.sqrt((b.x-z.x)**2+(b.z-z.z)**2)*0.3;
+      else continue; // already enemy-owned
+      if(score > bestScore) { bestScore = score; best = z; }
+    }
+    return best;
   }
 
+  // ── State machine ──
+  if (!player.alive) {
+    // Player dead — seek zones
+    if(!b.zoneTarget || b.zoneTarget.owner === 'enemy' || b.stateT > 8) {
+      b.zoneTarget = getBestZoneTarget();
+      b.stateT = 0;
+    }
+    b.state = b.zoneTarget ? 'cap_zone' : 'patrol';
+
+  } else if (b.cls === 'recon' && b.hp < b.maxHp * 0.22) {
+    b.state = 'flee';
+
+  } else if (los && dist < b.range) {
+    b.state = 'attack'; b.losLostT = 0;
+
+  } else if (dist < 34) {
+    if (los) b.losLostT = 0; else b.losLostT += dt;
+    b.state = b.losLostT < 3.2 ? 'chase' : 'patrol';
+
+  } else {
+    // Out of combat — pick between zone cap and patrol (weighted by role)
+    const zoneHungry = { assault: 0.52, recon: 0.35, heavy: 0.68 }[b.cls];
+    if(b.stateT > 5 || !b.state || b.state === 'cap_zone' || b.state === 'patrol') {
+      b.stateT = 0;
+      if(Math.random() < zoneHungry) {
+        b.zoneTarget = getBestZoneTarget();
+        b.state = b.zoneTarget ? 'cap_zone' : 'patrol';
+      } else {
+        b.state = 'patrol';
+      }
+    }
+  }
+
+  // ── Execute state ──
   if (b.state === 'attack') {
     b.angle = Math.atan2(dx, dz);
     b.g.rotation.y = b.angle;
+
+    // Strafe while attacking — direction flips randomly
+    if(b.strafeT === undefined || b.strafeT <= 0) {
+      b.strafeDir = Math.random() < 0.5 ? 1 : -1;
+      b.strafeT = 0.8 + Math.random() * 1.4;
+    }
+    const sa = b.angle + Math.PI/2 * b.strafeDir;
+    const sv = b.speed * (isMobile ? 55 : 62) * dt * 0.55;
+    const sx = b.x + Math.sin(sa)*sv, sz = b.z + Math.cos(sa)*sv;
+    if(!isWall(sx, b.z)) b.x = sx; else if(!isWall(b.x, sz)) b.z = sz;
+
+    // Shoot
     if (b.shootCd <= 0) {
       botShoot(b);
-      b.shootCd = b.fireRate*(0.7+Math.random()*0.65);
+      b.shootCd = b.fireRate * (0.65 + Math.random() * 0.7);
     }
+
+    // Assault class: throw grenade when player is close and has been targeting for a bit
+    if(b.cls === 'assault' && dist < 14 && b.stateT > 3 && Math.random() < 0.006) {
+      botThrowGrenade(b);
+    }
+
   } else if (b.state === 'chase') {
     moveBot(b, player.x, player.z, dt);
+
+  } else if (b.state === 'cap_zone') {
+    const z = b.zoneTarget;
+    if(!z || z.owner === 'enemy') {
+      b.zoneTarget = getBestZoneTarget();
+      b.state = b.zoneTarget ? 'cap_zone' : 'patrol';
+    } else {
+      moveBot(b, z.x + (Math.random()-0.5)*2, z.z + (Math.random()-0.5)*2, dt * 0.82);
+      // If arrived and standing in zone — let zone update handle capture
+      const zd = Math.sqrt((b.x-z.x)**2+(b.z-z.z)**2);
+      if(zd < 1.5) { b.state = 'patrol'; b.stateT = 0; } // idle inside zone
+    }
+
   } else if (b.state === 'flee') {
-    moveBot(b, b.x-(dx*2), b.z-(dz*2), dt);
+    moveBot(b, b.x - dx*2, b.z - dz*2, dt);
+
   } else {
-    if (!b.patrolTarget || b.stateT > 4.5 ||
-        (Math.abs(b.x-b.patrolTarget.x)<1.2 && Math.abs(b.z-b.patrolTarget.z)<1.2)) {
-      b.patrolTarget = randomOpen();
+    // patrol
+    if (!b.patrolTarget || b.stateT > 5.5 ||
+        (Math.abs(b.x - b.patrolTarget.x) < 1.4 && Math.abs(b.z - b.patrolTarget.z) < 1.4)) {
+      // 40% chance to patrol toward a zone instead of random
+      if(Math.random() < 0.4) {
+        const z = getBestZoneTarget();
+        b.patrolTarget = z ? {x: z.x + (Math.random()-0.5)*8, z: z.z + (Math.random()-0.5)*8} : randomOpen();
+      } else {
+        b.patrolTarget = randomOpen();
+      }
       b.stateT = 0;
     }
-    moveBot(b, b.patrolTarget.x, b.patrolTarget.z, dt*0.55);
+    moveBot(b, b.patrolTarget.x, b.patrolTarget.z, dt * 0.52);
   }
+
   b.g.position.set(b.x, 0, b.z);
+}
+
+// Bot grenade throw
+function botThrowGrenade(b) {
+  const dir = new THREE.Vector3(player.x - b.x, 0.5, player.z - b.z).normalize();
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.14, 6, 5),
+    new THREE.MeshStandardMaterial({color:0x2a3820, roughness:0.82})
+  );
+  const ox = b.x + dir.x*0.8, oz = b.z + dir.z*0.8;
+  mesh.position.set(ox, 1.4, oz);
+  scene.add(mesh);
+  grenades.push({ mesh, vx:dir.x*0.32, vy:dir.y*0.38, vz:dir.z*0.32, life:2.2, exploded:false });
 }
 
 function moveBot(b, tx, tz, dt) {
@@ -1347,6 +1438,27 @@ function randomOpen() {
   do { x=(2+Math.random()*(MAP-4))*CELL; z=(2+Math.random()*(MAP-4))*CELL; att++; }
   while (isWall(x,z) && att<32);
   return { x, z };
+}
+
+// Spawn player far from bots and enemy-owned zones
+function tacticalSpawn() {
+  let best = null, bestScore = -Infinity;
+  for(let i=0; i<22; i++){
+    let x, z, att=0;
+    do { x=(2+Math.random()*(MAP-4))*CELL; z=(2+Math.random()*(MAP-4))*CELL; att++; }
+    while(isWall(x,z) && att<20);
+    if(isWall(x,z)) continue;
+    // Score: far from bots = good, far from enemy zones = good, near neutral zones = slight bonus
+    let score = 0;
+    bots.forEach(b=>{ if(b.alive) score += Math.min(Math.sqrt((x-b.x)**2+(z-b.z)**2), 28); });
+    zones.forEach(z2=>{
+      const d = Math.sqrt((x-z2.x)**2+(z-z2.z)**2);
+      if(z2.owner==='enemy') score -= Math.max(0, 20-d)*1.2;
+      if(z2.owner==='neutral') score += Math.max(0, 15-d)*0.4;
+    });
+    if(score > bestScore){ bestScore=score; best={x,z}; }
+  }
+  return best || randomOpen();
 }
 
 // ─────────────────────────────────────────
@@ -1387,7 +1499,7 @@ function playerDeath() {
 }
 
 function respawn() {
-  const p = randomOpen();
+  const p = tacticalSpawn();
   player.x = p.x; player.z = p.z;
   player.hp = player.maxHp;
   player.ammo = player.maxAmmo;
@@ -1954,41 +2066,102 @@ function addKF(msg, col) {
 // ─────────────────────────────────────────
 function drawMinimap() {
   const S=90, sc=S/(MAP*CELL);
-  mmx.fillStyle='#0e0c09'; mmx.fillRect(0,0,S,S);
-  // walls
-  mmx.fillStyle='rgba(148,126,88,0.55)';
+  mmx.clearRect(0,0,S,S);
+
+  // Background
+  mmx.fillStyle='rgba(8,7,5,0.94)'; mmx.fillRect(0,0,S,S);
+
+  // Building pads — filled rectangles for legibility
+  const bldgs=[[2,2,8,12],[2,26,8,36],[13,13,25,25],[29,2,36,12],[29,26,36,36]];
+  bldgs.forEach(([r1,c1,r2,c2])=>{
+    const px=c1*CELL*sc, py=r1*CELL*sc;
+    const pw=(c2-c1+1)*CELL*sc, ph=(r2-r1+1)*CELL*sc;
+    mmx.fillStyle='rgba(88,78,58,0.35)'; mmx.fillRect(px,py,pw,ph);
+    mmx.strokeStyle='rgba(148,126,88,0.42)'; mmx.lineWidth=0.8; mmx.strokeRect(px,py,pw,ph);
+  });
+
+  // Walls
+  mmx.fillStyle='rgba(148,126,88,0.52)';
   for(let r=0;r<MAP;r++) for(let c=0;c<MAP;c++){
-    if(grid[r][c]) mmx.fillRect(c*CELL*sc,r*CELL*sc,CELL*sc+0.5,CELL*sc+0.5);
+    if(grid[r][c]) mmx.fillRect(c*CELL*sc,r*CELL*sc,CELL*sc+0.3,CELL*sc+0.3);
   }
-  // zones
+
+  // Roads — faint center lines
+  mmx.strokeStyle='rgba(80,75,55,0.35)'; mmx.lineWidth=2.2;
+  const mwS=(MAP*CELL/2)*sc;
+  mmx.beginPath(); mmx.moveTo(mwS,0); mmx.lineTo(mwS,S); mmx.stroke();
+  mmx.beginPath(); mmx.moveTo(0,mwS); mmx.lineTo(S,mwS); mmx.stroke();
+
+  // Zones
   zones.forEach(z=>{
-    const col=z.owner==='you'?'rgba(70,190,70,0.65)':z.owner==='enemy'?'rgba(190,70,70,0.65)':'rgba(190,170,70,0.45)';
-    mmx.fillStyle=col;
-    mmx.beginPath(); mmx.arc(z.x*sc,z.z*sc,z.radius*sc*0.65,0,Math.PI*2); mmx.fill();
-    mmx.fillStyle='#fc0'; mmx.font='bold 7px monospace';
-    mmx.fillText(z.id, z.x*sc-3, z.z*sc+3);
+    const zx=z.x*sc, zz=z.z*sc, zr=z.radius*sc*0.62;
+    const col = z.owner==='you' ? 'rgba(60,200,80,0.72)' : z.owner==='enemy' ? 'rgba(210,60,60,0.72)' : 'rgba(200,170,50,0.55)';
+    // Outer glow ring
+    mmx.beginPath(); mmx.arc(zx,zz,zr+1.5,0,Math.PI*2);
+    mmx.strokeStyle=col; mmx.lineWidth=1.2; mmx.stroke();
+    // Fill disc
+    mmx.beginPath(); mmx.arc(zx,zz,zr,0,Math.PI*2);
+    mmx.fillStyle=col.replace('0.72','0.12').replace('0.55','0.08'); mmx.fill();
+    // Capture progress arc
+    if(z.progress > 0 && z.progress < 1) {
+      mmx.beginPath(); mmx.arc(zx,zz,zr-1, -Math.PI/2, -Math.PI/2 + z.progress*Math.PI*2);
+      mmx.strokeStyle='rgba(255,220,0,0.9)'; mmx.lineWidth=1.5; mmx.stroke();
+    }
+    // Zone label
+    mmx.fillStyle='rgba(255,220,0,0.95)'; mmx.font='bold 6.5px monospace';
+    mmx.textAlign='center'; mmx.fillText(z.id, zx, zz+2.5);
   });
-  // bots
-  bots.forEach(b=>{
-    if(!b.alive) return;
-    mmx.fillStyle='#c44';
-    mmx.beginPath(); mmx.arc(b.x*sc,b.z*sc,2.5,0,Math.PI*2); mmx.fill();
-  });
-  // powerups
+  mmx.textAlign='left';
+
+  // Powerups
   powerups.forEach(p=>{
     if(!p.active) return;
-    mmx.fillStyle='rgba(255,200,0,0.9)';
-    mmx.fillRect(p.x*sc-1.5,p.z*sc-1.5,3,3);
+    mmx.fillStyle='rgba(255,200,0,0.85)';
+    const t=Date.now()*0.003; const r=1.2+Math.sin(t)*0.5;
+    mmx.beginPath(); mmx.arc(p.x*sc,p.z*sc,r,0,Math.PI*2); mmx.fill();
   });
-  // player
-  mmx.fillStyle='#4cf';
-  mmx.beginPath(); mmx.arc(player.x*sc,player.z*sc,3.5,0,Math.PI*2); mmx.fill();
-  // heading arrow
-  mmx.strokeStyle='#4cf'; mmx.lineWidth=1.5;
+
+  // Bots — red triangles pointing their facing angle, pulse if aggro
+  bots.forEach(b=>{
+    if(!b.alive) return;
+    const bx=b.x*sc, bz=b.z*sc;
+    const aggro = b.state==='attack'||b.state==='chase';
+    const r = aggro ? 3.2 : 2.4;
+    mmx.save();
+    mmx.translate(bx,bz);
+    mmx.rotate(b.angle);
+    mmx.beginPath();
+    mmx.moveTo(0,-r*1.5); mmx.lineTo(-r,r); mmx.lineTo(r,r); mmx.closePath();
+    mmx.fillStyle = aggro ? `rgba(220,60,60,${0.7+Math.sin(Date.now()*0.008)*0.3})` : 'rgba(180,60,60,0.75)';
+    mmx.fill();
+    if(aggro){ mmx.strokeStyle='rgba(255,120,80,0.6)'; mmx.lineWidth=0.8; mmx.stroke(); }
+    mmx.restore();
+  });
+
+  // Player FOV cone
+  const px=player.x*sc, pz=player.z*sc;
+  const fovHalf = (isMobile?72:76) * Math.PI/360;
   mmx.beginPath();
-  mmx.moveTo(player.x*sc,player.z*sc);
-  mmx.lineTo(player.x*sc-Math.sin(yaw)*9,player.z*sc-Math.cos(yaw)*9);
+  mmx.moveTo(px,pz);
+  mmx.arc(px,pz,14,-yaw-fovHalf-Math.PI/2,-yaw+fovHalf-Math.PI/2);
+  mmx.closePath();
+  mmx.fillStyle='rgba(70,180,255,0.12)'; mmx.fill();
+  mmx.strokeStyle='rgba(70,180,255,0.25)'; mmx.lineWidth=0.6; mmx.stroke();
+
+  // Player dot
+  mmx.beginPath(); mmx.arc(px,pz,3.4,0,Math.PI*2);
+  mmx.fillStyle='#4cf'; mmx.fill();
+  mmx.strokeStyle='rgba(255,255,255,0.5)'; mmx.lineWidth=0.8; mmx.stroke();
+
+  // Heading line
+  mmx.strokeStyle='rgba(70,200,255,0.8)'; mmx.lineWidth=1.2;
+  mmx.beginPath();
+  mmx.moveTo(px,pz);
+  mmx.lineTo(px-Math.sin(yaw)*11, pz-Math.cos(yaw)*11);
   mmx.stroke();
+
+  // Border
+  mmx.strokeStyle='rgba(148,126,88,0.38)'; mmx.lineWidth=1; mmx.strokeRect(0.5,0.5,S-1,S-1);
 }
 
 // ─────────────────────────────────────────
@@ -2145,14 +2318,15 @@ function initGame() {
   Object.assign(player, clsStats);
   player.maxHp=clsStats.hp; player.alive=true; player.kills=0; player.streak=0;
 
-  const sp=randomOpen();
-  player.x=sp.x; player.z=sp.z;
-  cam.position.set(sp.x,1.7,sp.z);
-  yaw=0; pitch=0;
-
   bots.forEach(b=>scene.remove(b.g)); bots.length=0;
   const botCount=isMobile?3:5;
   for(let i=0;i<botCount;i++) bots.push(mkBot(i));
+
+  // Spawn after bots so tacticalSpawn can avoid them
+  const sp=tacticalSpawn();
+  player.x=sp.x; player.z=sp.z;
+  cam.position.set(sp.x,1.7,sp.z);
+  yaw=0; pitch=0;
 
   powerups.forEach(p=>{scene.remove(p.mesh);scene.remove(p.light);}); powerups.length=0;
   pupSpawnT=0; zoneScoreTick=0;
