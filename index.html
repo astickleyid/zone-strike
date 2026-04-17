@@ -158,8 +158,27 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 .btn{background:transparent;border:1px solid #fc0;color:#fc0;padding:12px 44px;font-family:inherit;font-size:11px;letter-spacing:6px;cursor:pointer;transition:all 0.14s;pointer-events:all;font-weight:bold;text-shadow:0 0 8px rgba(255,200,0,0.4);position:relative;z-index:1}
 .btn:active{background:#fc0;color:#000;box-shadow:0 0 24px rgba(255,200,0,0.45)}
 #go-screen .go-res{font-size:10px;letter-spacing:4px;color:#887;margin-bottom:8px;position:relative;z-index:1}
-#go-screen .fsc{font-size:46px;font-weight:bold;margin-bottom:20px;text-shadow:0 0 18px currentColor;letter-spacing:4px;position:relative;z-index:1}
-#go-stats{font-size:10px;color:#665;line-height:2.4;margin-bottom:26px;text-align:center;letter-spacing:2px;position:relative;z-index:1;border:1px solid #221;padding:16px 24px;background:rgba(0,0,0,0.3)}
+#go-screen .fsc{font-size:54px;font-weight:bold;margin-bottom:6px;text-shadow:0 0 22px currentColor;letter-spacing:4px;position:relative;z-index:1}
+#go-verdict{font-size:8px;letter-spacing:5px;color:#554;margin-bottom:22px;z-index:1;position:relative}
+#go-stats{font-size:10px;color:#665;line-height:1;margin-bottom:24px;text-align:left;letter-spacing:1px;position:relative;z-index:1;border:1px solid #221;padding:18px 24px;background:rgba(0,0,0,0.32);width:100%;max-width:300px}
+.go-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1a1a14}
+.go-row:last-child{border-bottom:none}
+.go-label{color:#554;letter-spacing:2px;font-size:9px}
+.go-val{color:#fc0;font-weight:bold;font-size:12px;letter-spacing:1px}
+.go-val.great{color:#5c5;text-shadow:0 0 8px rgba(80,200,80,0.5)}
+.go-val.bad{color:#c55}
+#go-grade{font-size:42px;font-weight:900;letter-spacing:4px;margin-bottom:4px;z-index:1;position:relative;text-shadow:0 0 30px currentColor}
+#go-grade-label{font-size:8px;letter-spacing:5px;color:#554;margin-bottom:18px;z-index:1;position:relative}
+
+/* ── TAB SCOREBOARD ── */
+#scoreboard{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(8,7,5,0.96);border:1px solid rgba(180,160,120,0.28);padding:22px 28px;display:none;z-index:50;min-width:280px;max-width:340px;pointer-events:none}
+#scoreboard h2{font-size:10px;letter-spacing:5px;color:#fc0;margin-bottom:14px;text-align:center;border-bottom:1px solid #221;padding-bottom:10px}
+.sb-row{display:flex;justify-content:space-between;padding:5px 0;font-size:10px;letter-spacing:1px;border-bottom:1px solid #151510}
+.sb-row:last-child{border-bottom:none}
+.sb-name{color:#aaa;flex:1}
+.sb-you{color:#4cf}
+.sb-score{color:#fc0;font-weight:bold;min-width:40px;text-align:right}
+.sb-kd{color:#665;min-width:60px;text-align:right;font-size:9px}
 
 @media(max-width:380px){#vig{display:none}.mbtn{box-shadow:none}#score-wrap{font-size:17px}#compass{display:none}}
 </style>
@@ -291,8 +310,17 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
   <h1 id="go-title">MISSION COMPLETE</h1>
   <div class="go-res" id="go-res">▶ OBJECTIVE SECURED</div>
   <div class="fsc" id="go-sc">0</div>
+  <div id="go-verdict">SCORE</div>
+  <div id="go-grade">A</div>
+  <div id="go-grade-label">PERFORMANCE RATING</div>
   <div id="go-stats"></div>
   <button class="btn" onclick="resetMenu()">REDEPLOY</button>
+</div>
+
+<!-- TAB SCOREBOARD -->
+<div id="scoreboard">
+  <h2>⬡ MISSION DEBRIEF</h2>
+  <div id="sb-rows"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -557,11 +585,17 @@ let pupSpawnT = 0;
 let hitMarkT = 0;
 let reloadAnim = null;
 let respawnCountdown = null;
-let adsActive = false, adsFOV = 0; // 0=hip, 1=ADS (lerp target)
-let shakeT = 0, shakeAmt = 0; // screen shake
-let dmgDirs = []; // [{angle, life}] directional hit indicators
-let footT = 0, lastFootStep = 0; // footstep timer
-let xhairSpread = 0; // dynamic crosshair spread (0=tight, 1=wide)
+let adsActive = false, adsFOV = 0;
+let shakeT = 0, shakeAmt = 0;
+let dmgDirs = [];
+let footT = 0, lastFootStep = 0;
+let xhairSpread = 0;
+// Stats tracking
+let shotsFired = 0, shotsHit = 0, bestStreak = 0;
+let dmgDealt = 0;
+// Grenade arc preview
+let grenadesArcDots = [];
+let grenadesCharging = false;
 
 const player = {
   x: 10, z: 10,
@@ -1339,7 +1373,20 @@ function refreshBotHP(b) {
 function damageBot(b, dmg) {
   if (!b.alive) return;
   b.hp -= dmg;
+  dmgDealt += dmg;
+  shotsHit++;
   refreshBotHP(b);
+  // Flinch — small random nudge in world pos
+  const flinchA = Math.random()*Math.PI*2;
+  const flinchD = 0.18 + Math.random()*0.12;
+  const fb = b;
+  const ox = fb.x, oz = fb.z;
+  fb.x += Math.cos(flinchA)*flinchD;
+  fb.z += Math.sin(flinchA)*flinchD;
+  setTimeout(()=>{ fb.x=ox; fb.z=oz; }, 80);
+  // Brief upward tilt
+  b.g.rotation.x = -0.12;
+  setTimeout(()=>{ if(b.alive) b.g.rotation.x=0; }, 90);
   if (b.hp <= 0) killBot(b);
   else if (b.cls === 'recon' && b.hp < b.maxHp*0.22) b.state = 'flee';
 }
@@ -1395,6 +1442,7 @@ function showKillBanner(msg, sub, col='#ffdd00') {
 }
 
 function checkStreak() {
+  if(player.streak > bestStreak) bestStreak = player.streak;
   const msgs = {
     2: ['DOUBLE KILL', '2× ELIMINATION', '#fc0'],
     3: ['TRIPLE KILL', '3× ELIMINATION', '#f84'],
@@ -1768,10 +1816,10 @@ function updateParticles(dt) {
 //  GRENADES
 // ─────────────────────────────────────────
 const grenades = [];
-function throwGrenade() {
+function _throwGrenadeCore() {
   const dir = new THREE.Vector3(
     -Math.sin(yaw)*Math.cos(pitch),
-    Math.sin(pitch)+0.28,
+     Math.sin(pitch)+0.28,
     -Math.cos(yaw)*Math.cos(pitch)
   ).normalize();
   const mesh = new THREE.Mesh(
@@ -1782,6 +1830,55 @@ function throwGrenade() {
   scene.add(mesh);
   grenades.push({ mesh, vx:dir.x*0.4, vy:dir.y*0.34, vz:dir.z*0.4, life:2.8, exploded:false });
 }
+
+function throwGrenade() {
+  clearGrenadeArc();
+  _throwGrenadeCore();
+}
+
+function buildGrenadeArc() {
+  clearGrenadeArc();
+  if(player.cls !== 'assault' || abCd > 0) return;
+  const dir = new THREE.Vector3(
+    -Math.sin(yaw)*Math.cos(pitch),
+     Math.sin(pitch)+0.28,
+    -Math.cos(yaw)*Math.cos(pitch)
+  ).normalize();
+  let px=cam.position.x+dir.x*0.55, py=cam.position.y+dir.y*0.55, pz=cam.position.z+dir.z*0.55;
+  let vx=dir.x*24.8, vy=dir.y*21.1, vz=dir.z*24.8;
+  const dotMat = new THREE.MeshBasicMaterial({color:0xffcc00,transparent:true,opacity:0.75,depthWrite:false});
+  const dotGeo = new THREE.SphereGeometry(0.065,4,3);
+  for(let i=0;i<28;i++){
+    const s=0.038;
+    vx*=0.99; vz*=0.99; vy-=9.8*s;
+    px+=vx*s; py+=vy*s; pz+=vz*s;
+    if(py<0.12){ py=0.12; }
+    const fade=1-i/28;
+    const dot=new THREE.Mesh(dotGeo,dotMat.clone());
+    dot.material.opacity=fade*0.72;
+    dot.scale.setScalar(0.5+fade*0.5);
+    dot.position.set(px,py,pz);
+    scene.add(dot);
+    grenadesArcDots.push(dot);
+    if(py<=0.15&&i>3) break;
+  }
+  if(grenadesArcDots.length>0){
+    const last=grenadesArcDots[grenadesArcDots.length-1];
+    const ring=new THREE.Mesh(
+      new THREE.RingGeometry(0.5,0.65,20),
+      new THREE.MeshBasicMaterial({color:0xffcc00,transparent:true,opacity:0.55,side:THREE.DoubleSide,depthWrite:false})
+    );
+    ring.rotation.x=-Math.PI/2; ring.position.set(last.position.x,0.06,last.position.z);
+    scene.add(ring); grenadesArcDots.push(ring);
+  }
+}
+
+function clearGrenadeArc(){
+  grenadesArcDots.forEach(d=>scene.remove(d));
+  grenadesArcDots=[];
+}
+
+
 
 function explodeGrenade(g) {
   g.exploded = true;
@@ -1995,8 +2092,23 @@ document.getElementById('reload-btn').addEventListener('touchstart', e=>{
 },{passive:false});
 document.getElementById('ability-btn').addEventListener('touchstart', e=>{
   e.preventDefault(); e.stopPropagation();
-  if(gameActive) useAbility();
+  if(!gameActive) return;
+  if(player.cls === 'assault' && abCd <= 0) {
+    grenadesCharging = true;
+    buildGrenadeArc();
+  } else {
+    useAbility();
+  }
 },{passive:false});
+document.getElementById('ability-btn').addEventListener('touchend', e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(grenadesCharging){
+    grenadesCharging = false;
+    if(gameActive) useAbility();
+  }
+},{passive:false});
+// Desktop: hold G to preview, tap E to throw instantly
+document.addEventListener('keydown', e=>{ if(e.code==='KeyG'&&gameActive&&!grenadesCharging){ grenadesCharging=true; buildGrenadeArc(); } });
 document.getElementById('ads-btn').addEventListener('touchstart', e=>{
   e.preventDefault(); e.stopPropagation();
   if(gameActive) toggleADS(true);
@@ -2033,10 +2145,16 @@ document.addEventListener('keydown', e=>{
   if(e.code==='KeyE') useAbility();
   if(e.code==='ShiftLeft'){ sprintActive=true; document.getElementById('sprint-ind').style.opacity='1'; }
   if(e.code==='KeyF'&&!reloading) doReload();
+  if(e.code==='Tab'){ e.preventDefault(); document.getElementById('scoreboard').style.display='block'; }
 });
 document.addEventListener('keyup', e=>{
   keys[e.code]=false;
   if(e.code==='ShiftLeft'){ sprintActive=false; document.getElementById('sprint-ind').style.opacity='0'; }
+  if(e.code==='Tab'){ document.getElementById('scoreboard').style.display='none'; }
+  if(e.code==='KeyG'&&grenadesCharging){
+    grenadesCharging=false;
+    if(gameActive) useAbility();
+  }
 });
 let mouseDown=false;
 canvas.addEventListener('mousedown', e=>{
@@ -2071,6 +2189,7 @@ function shoot() {
   if(!player.alive||reloading||shootCd>0) return;
   if(player.ammo<=0){ doReload(); return; }
   player.ammo--;
+  shotsFired++;
   shootCd = { assault:0.112, recon:0.068, heavy:0.225 }[player.cls];
   updAmmo();
 
@@ -2158,6 +2277,21 @@ function doReload() {
   reloading=true;
   playSound('reload');
   const dur = { assault:2100, recon:1500, heavy:3200 }[player.cls];
+
+  // Weapon swing-down animation
+  if(weaponGroup){
+    weaponGroup.position.y = -0.22;
+    weaponGroup.rotation.z = 0.38;
+    weaponGroup.rotation.x = 0.18;
+    setTimeout(()=>{
+      if(weaponGroup){
+        weaponGroup.position.y = 0;
+        weaponGroup.rotation.z = 0;
+        weaponGroup.rotation.x = 0;
+      }
+    }, dur - 320);
+  }
+
   const rbar=document.getElementById('rbar');
   rbar.style.transition=`width ${dur/1000}s linear`;
   rbar.style.width='100%';
@@ -2537,6 +2671,8 @@ function initGame() {
   if(isMobile) touchLayer.classList.add('active');
   score.you=0; score.enemy=0;
   kills=0; deaths=0; captures=0;
+  shotsFired=0; shotsHit=0; bestStreak=0; dmgDealt=0;
+  grenadesCharging=false; clearGrenadeArc();
   roundSec=180;
   player.cls=selClass;
   abCd=0; shieldActive=false;
@@ -2606,7 +2742,7 @@ function initGame() {
 
 function endGame() {
   gameActive=false;
-  // Reset all touch state
+  clearGrenadeArc();
   touchReg.clear(); hideJoy(); joyActive=false; aimDX=0; aimDY=0;
   if(holdShootInterval){clearInterval(holdShootInterval);holdShootInterval=null;}
   if(roundTimer){clearInterval(roundTimer);roundTimer=null;}
@@ -2614,18 +2750,57 @@ function endGame() {
   if(respawnCountdown){clearInterval(respawnCountdown);respawnCountdown=null;}
   if(document.pointerLockElement===canvas) document.exitPointerLock();
 
-  const won=score.you>score.enemy;
-  document.getElementById('go-title').textContent=won?'MISSION COMPLETE':'MISSION FAILED';
-  document.getElementById('go-title').style.color=won?'#5c5':'#c55';
-  document.getElementById('go-res').textContent=won?'▶ OBJECTIVE SECURED':'▶ OBJECTIVE LOST';
-  document.getElementById('go-sc').textContent=score.you;
-  document.getElementById('go-sc').style.color=won?'#5c5':'#c55';
-  const zc=zones.filter(z=>z.owner==='you').length;
-  document.getElementById('go-stats').innerHTML=
-    `KILLS &nbsp; ${kills} &nbsp;·&nbsp; DEATHS &nbsp; ${deaths}<br>`+
-    `ZONES HELD &nbsp; ${zc} / ${zones.length}<br>`+
-    `K/D &nbsp; ${deaths>0?(kills/deaths).toFixed(2):kills}<br>`+
-    `ENEMY SCORE &nbsp; ${score.enemy}`;
+  const won = score.you > score.enemy;
+  const zc  = zones.filter(z=>z.owner==='you').length;
+  const acc  = shotsFired > 0 ? Math.round((shotsHit/shotsFired)*100) : 0;
+  const kd   = deaths > 0 ? (kills/deaths).toFixed(2) : kills;
+
+  // Performance grade
+  let gradeScore = 0;
+  if(won) gradeScore += 40;
+  gradeScore += Math.min(30, kills * 3);
+  gradeScore += Math.min(15, zc * 5);
+  gradeScore += Math.min(10, Math.floor(acc/10));
+  gradeScore -= deaths * 4;
+  gradeScore = Math.max(0, Math.min(100, gradeScore));
+  const grade     = gradeScore>=90?'S':gradeScore>=78?'A':gradeScore>=62?'B':gradeScore>=45?'C':'D';
+  const gradeCol  = gradeScore>=90?'#ffdd00':gradeScore>=78?'#5cf570':gradeScore>=62?'#5aacff':gradeScore>=45?'#ff9944':'#ff4444';
+  const gradeDesc = gradeScore>=90?'OUTSTANDING':gradeScore>=78?'EXCELLENT':gradeScore>=62?'GOOD':gradeScore>=45?'AVERAGE':'NEEDS WORK';
+
+  document.getElementById('go-title').textContent = won ? 'MISSION COMPLETE' : 'MISSION FAILED';
+  document.getElementById('go-title').style.color  = won ? '#5c5' : '#c55';
+  document.getElementById('go-res').textContent    = won ? '▶ OBJECTIVE SECURED' : '▶ OBJECTIVE LOST';
+  document.getElementById('go-sc').textContent     = score.you;
+  document.getElementById('go-sc').style.color     = won ? '#5c5' : '#c55';
+  document.getElementById('go-verdict').textContent= 'FINAL SCORE';
+  document.getElementById('go-grade').textContent  = grade;
+  document.getElementById('go-grade').style.color  = gradeCol;
+  document.getElementById('go-grade-label').textContent = gradeDesc + ' · ' + gradeScore + '/100';
+
+  function row(label, val, cls='') {
+    return `<div class="go-row"><span class="go-label">${label}</span><span class="go-val ${cls}">${val}</span></div>`;
+  }
+  document.getElementById('go-stats').innerHTML =
+    row('KILLS',          kills,    kills>=5?'great':'')  +
+    row('DEATHS',         deaths,   deaths>=5?'bad':'')   +
+    row('K/D RATIO',      kd,       parseFloat(kd)>=1.5?'great':parseFloat(kd)<0.5?'bad':'') +
+    row('ZONES HELD',     `${zc} / ${zones.length}`, zc===zones.length?'great':zc===0?'bad':'') +
+    row('ACCURACY',       acc+'%',  acc>=55?'great':acc<20?'bad':'') +
+    row('DAMAGE DEALT',   Math.round(dmgDealt)) +
+    row('BEST STREAK',    bestStreak, bestStreak>=4?'great':'') +
+    row('ENEMY SCORE',    score.enemy);
+
+  // Populate TAB scoreboard too
+  const botNames = bots.map((b,i)=>({
+    name:b.name, kills:Math.floor(Math.random()*kills*0.6)+1,
+    deaths:Math.floor(Math.random()*deaths)+1
+  }));
+  let sbHTML = `<div class="sb-row"><span class="sb-name sb-you">YOU</span><span class="sb-score">${score.you}</span><span class="sb-kd">${kills}K / ${deaths}D</span></div>`;
+  botNames.sort((a,b)=>b.kills-a.kills).forEach(b=>{
+    sbHTML += `<div class="sb-row"><span class="sb-name">${b.name}</span><span class="sb-score">${Math.floor(Math.random()*280+80)}</span><span class="sb-kd">${b.kills}K / ${b.deaths}D</span></div>`;
+  });
+  document.getElementById('sb-rows').innerHTML = sbHTML;
+
   document.getElementById('go-screen').style.display='flex';
 }
 
@@ -2755,6 +2930,7 @@ function animate() {
   updatePowerups(dt);
   updateParticles(dt);
   updateGrenades(dt);
+  if(grenadesCharging && player.cls==='assault') buildGrenadeArc();
   drawMinimap();
   if(radarDish) radarDish.rotation.y += dt * 0.8;
   updateDust(dt);
