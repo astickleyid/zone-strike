@@ -120,11 +120,12 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 
 /* ── MOBILE BUTTONS — sit ABOVE touch layer ── */
 #mobile-btns{position:absolute;right:16px;bottom:108px;pointer-events:all;display:flex;flex-direction:column;gap:14px;align-items:flex-end;z-index:15;touch-action:none}
-.mbtn{width:64px;height:64px;border-radius:50%;border:2px solid rgba(180,160,120,0.45);background:radial-gradient(circle,rgba(80,65,45,0.45),rgba(45,38,28,0.28));color:#fff;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;font-weight:bold;box-shadow:0 4px 18px rgba(0,0,0,0.65);transition:all 0.08s;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none}
+.mbtn{width:64px;height:64px;border-radius:50%;border:2px solid rgba(180,160,120,0.45);background:radial-gradient(circle,rgba(80,65,45,0.45),rgba(45,38,28,0.28));color:#fff;font-size:11px;letter-spacing:1px;display:flex;align-items:center;justify-content:center;font-weight:bold;box-shadow:0 4px 18px rgba(0,0,0,0.65);transition:all 0.08s;touch-action:none;-webkit-tap-highlight-color:transparent;user-select:none;position:relative;cursor:pointer}
 .mbtn:active{transform:scale(0.91);background:radial-gradient(circle,rgba(110,90,60,0.55),rgba(75,62,45,0.38))}
-.mbtn-icon{font-size:22px;line-height:1;text-shadow:0 2px 4px #000}
+.mbtn-icon{font-size:22px;line-height:1;text-shadow:0 2px 4px #000;position:relative;z-index:1}
 #shoot-btn{width:80px;height:80px;border-color:rgba(200,130,50,0.7);background:radial-gradient(circle,rgba(160,70,30,0.55),rgba(120,50,20,0.35));box-shadow:0 4px 22px rgba(160,55,0,0.5),0 0 28px rgba(200,130,50,0.3)}
 #shoot-btn:active{border-color:rgba(230,150,70,0.95);box-shadow:0 2px 12px rgba(190,75,15,0.75),0 0 36px rgba(230,150,70,0.52)}
+#ability-btn.on-cooldown{border-color:rgba(100,80,50,0.4);opacity:0.72}
 
 /* ── MINIMAP ── */
 #mm{position:absolute;bottom:14px;right:14px;width:90px;height:90px;background:rgba(14,12,9,0.96);border:2px solid rgba(180,160,120,0.42);overflow:hidden;box-shadow:0 0 20px rgba(180,160,120,0.25)}
@@ -252,8 +253,11 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
   </div>
   <div id="ads-btn">ADS</div>
   <div id="mobile-btns">
-    <button class="mbtn" id="ability-btn"><span class="mbtn-icon">E</span></button>
-    <button class="mbtn" id="reload-btn"><span class="mbtn-icon">R</span></button>
+    <div class="mbtn" id="ability-btn">
+      <span class="mbtn-icon" id="abl-icon">💣</span>
+      <canvas id="abl-ring" width="64" height="64" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none"></canvas>
+    </div>
+    <button class="mbtn" id="reload-btn"><span class="mbtn-icon">↺</span></button>
     <button class="mbtn" id="shoot-btn"><span class="mbtn-icon">●</span></button>
   </div>
   <div id="mm"><canvas id="mmc" width="90" height="90"></canvas></div>
@@ -1423,12 +1427,27 @@ function respawnBot(b) {
   do { bx=(3+Math.random()*(MAP-6))*CELL; bz=(3+Math.random()*(MAP-6))*CELL; att++; }
   while (isWall(bx,bz) && att<38);
   b.x=bx; b.z=bz; b.hp=b.maxHp; b.alive=true;
-  b.state='patrol'; b.patrolTarget=null;
-  b.g.position.set(bx,0,bz);
+  b.state='patrol'; b.patrolTarget=null; b.zoneTarget=null;
   b.g.rotation.set(0,0,0);
-  b.g.scale.set(1,1,1);
+  b.g.position.set(bx, 2.5, bz); // drop from above
   scene.add(b.g);
   refreshBotHP(b);
+
+  // Drop-in animation
+  let dropT = 0;
+  const dropAnim = () => {
+    dropT += 0.055;
+    b.g.position.y = Math.max(0, 2.5 - dropT*6.5);
+    if(b.g.position.y > 0) requestAnimationFrame(dropAnim);
+    else b.g.position.y = 0;
+  };
+  requestAnimationFrame(dropAnim);
+
+  // Spawn flash
+  spawnParts(bx, 1.2, bz, isMobile?4:8, 0x44aaff, 0.16);
+  const fl = new THREE.PointLight(0x44aaff, 8, 6);
+  fl.position.set(bx,1.2,bz); scene.add(fl);
+  setTimeout(()=>scene.remove(fl), 220);
 }
 
 function showKillBanner(msg, sub, col='#ffdd00') {
@@ -1740,17 +1759,62 @@ function mkPowerup() {
   const p = randomOpen();
   if (isWall(p.x, p.z)) return;
   const type = PUP_T[Math.floor(Math.random()*4)];
-  const colMap = { ammo:0x6a5a3a, health:0x884444, speed:0x444488, damage:0x886644 };
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.55, 0.45, 0.55),
-    new THREE.MeshStandardMaterial({ color:colMap[type], roughness:0.8, metalness:0.3 })
-  );
-  mesh.position.set(p.x, 0.225, p.z);
-  scene.add(mesh);
-  const light = new THREE.PointLight(PUP_C[type], 1.4, 6);
-  light.position.set(p.x, 0.9, p.z);
+  const col  = PUP_C[type];
+
+  const group = new THREE.Group();
+  group.position.set(p.x, 0, p.z);
+
+  // Base pad
+  const padMat = new THREE.MeshStandardMaterial({ color:0x222018, roughness:0.6, metalness:0.5 });
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.42,0.06,12), padMat);
+  pad.position.y = 0.03; group.add(pad);
+
+  // Type-specific mesh
+  const eMat = new THREE.MeshStandardMaterial({ color:col, roughness:0.3, metalness:0.55, emissive:col, emissiveIntensity:0.35 });
+  let icon;
+  if(type === 'health'){
+    // Red cross from two boxes
+    const bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.42,0.14), eMat);
+    const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.42,0.14,0.14), eMat.clone());
+    bar2.material.emissiveIntensity = 0.35;
+    bar1.position.y = 0.4; bar2.position.y = 0.4;
+    group.add(bar1, bar2);
+    icon = bar1;
+  } else if(type === 'ammo'){
+    // Stack of 3 cylinder "bullets"
+    icon = new THREE.Group();
+    [-0.1,0,0.1].forEach((ox,i)=>{
+      const blt = new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.065,0.38,6), eMat.clone());
+      blt.position.set(ox*1.4, 0.42, i*0.06-0.06); icon.add(blt);
+    });
+    group.add(icon);
+  } else if(type === 'speed'){
+    // Tetrahedron point-up — lightning shape
+    icon = new THREE.Mesh(new THREE.TetrahedronGeometry(0.24,0), eMat.clone());
+    icon.position.y = 0.48; icon.rotation.y = Math.PI/4; group.add(icon);
+  } else {
+    // Damage: octahedron — aggressive shape
+    icon = new THREE.Mesh(new THREE.OctahedronGeometry(0.22,0), eMat.clone());
+    icon.position.y = 0.44; group.add(icon);
+  }
+
+  // Vertical glow beam
+  const beamMat = new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.18,side:THREE.DoubleSide,depthWrite:false});
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.12,2.8,8,1,true), beamMat);
+  beam.position.y = 1.4; group.add(beam);
+
+  // Flat disc glow on ground
+  const discMat = new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.22,side:THREE.DoubleSide,depthWrite:false});
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.7,18), discMat);
+  disc.rotation.x = -Math.PI/2; disc.position.y = 0.01; group.add(disc);
+
+  scene.add(group);
+
+  const light = new THREE.PointLight(col, 1.8, 8);
+  light.position.set(p.x, 1.0, p.z);
   scene.add(light);
-  powerups.push({ x:p.x, z:p.z, type, active:true, mesh, light, t:0 });
+
+  powerups.push({ x:p.x, z:p.z, type, active:true, mesh:group, light, beam:beamMat, disc:discMat, t:0 });
 }
 
 function pickupPowerup(pu) {
@@ -2312,21 +2376,48 @@ function doReload() {
 function useAbility() {
   if(abCd>0) return;
   abCd=abMax[player.cls];
+
   if(player.cls==='assault'){
     throwGrenade();
     addKF('⊕ Frag grenade deployed','#fc0');
+
   } else if(player.cls==='recon'){
-    scene.fog.near=4; scene.fog.far=16;
+    // Smoke screen — fog crush + green tint + smoke particles around player
+    scene.fog.near=3; scene.fog.far=14;
+    const dmgEl=document.getElementById('dmg');
+    dmgEl.style.background='radial-gradient(ellipse at center,transparent 25%,rgba(30,80,40,0.55) 100%)';
+    dmgEl.style.opacity='0.65';
+    // Spawn smoke cloud
+    for(let i=0;i<(isMobile?8:18);i++){
+      const a=Math.random()*Math.PI*2, r=Math.random()*3.5;
+      spawnParts(player.x+Math.cos(a)*r, 1.2+Math.random()*1.5, player.z+Math.sin(a)*r, 1, 0x445540, 0.06);
+    }
     addKF('◎ Smoke screen deployed','#8af');
-    setTimeout(()=>{ scene.fog.near=FOG_NEAR; scene.fog.far=FOG_FAR; },5500);
+    setTimeout(()=>{
+      scene.fog.near=FOG_NEAR; scene.fog.far=FOG_FAR;
+      dmgEl.style.background='radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.65) 100%)';
+      dmgEl.style.opacity='0';
+    }, 5500);
+
   } else {
+    // Heavy shield — blue hex vignette + damage reduction
     shieldActive=true;
-    document.getElementById('dmg').style.background='radial-gradient(ellipse at center,transparent 40%,rgba(0,60,200,0.32) 100%)';
+    const dmgEl=document.getElementById('dmg');
+    dmgEl.style.background='radial-gradient(ellipse at center,transparent 30%,rgba(0,80,220,0.38) 100%)';
+    dmgEl.style.opacity='0.8';
+    // Pulse flash
+    setTimeout(()=>{ dmgEl.style.opacity='0.35'; }, 180);
+    // Shield hex sparks outward
+    for(let i=0;i<(isMobile?6:14);i++){
+      const a=i*(Math.PI*2/14);
+      spawnParts(player.x+Math.cos(a)*0.6, 1.4, player.z+Math.sin(a)*0.6, 1, 0x4488ff, 0.14);
+    }
     addKF('⬡ Ballistic shield active','#6af');
     setTimeout(()=>{
       shieldActive=false;
-      document.getElementById('dmg').style.background='radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.65) 100%)';
-    },5200);
+      dmgEl.style.background='radial-gradient(ellipse at center,transparent 40%,rgba(180,0,0,0.65) 100%)';
+      dmgEl.style.opacity='0';
+    }, 5200);
   }
 }
 
@@ -2374,18 +2465,46 @@ function updScore() {
   document.getElementById('se').textContent=score.enemy;
 }
 
+const _ablRingCanvas = document.getElementById('abl-ring');
+const _ablRingCtx = _ablRingCanvas ? _ablRingCanvas.getContext('2d') : null;
+const _ablIcons = { assault:'💣', recon:'💨', heavy:'🛡️' };
+
 function updAbl(dt) {
-  const fill=document.getElementById('abl-fill');
-  const txt=document.getElementById('abl-txt');
-  if(abCd>0){
-    abCd=Math.max(0,abCd-dt);
-    fill.style.width=(1-abCd/abMax[player.cls])*100+'%';
-    txt.textContent=Math.ceil(abCd)+'s';
-    txt.style.color='#776';
+  const fill = document.getElementById('abl-fill');
+  const txt  = document.getElementById('abl-txt');
+  const icon = document.getElementById('abl-icon');
+  const btn  = document.getElementById('ability-btn');
+
+  if(icon) icon.textContent = _ablIcons[player.cls] || '⚡';
+
+  if(abCd > 0){
+    abCd = Math.max(0, abCd-dt);
+    const pct = 1 - abCd/abMax[player.cls];
+    fill.style.width = pct*100+'%';
+    txt.textContent  = Math.ceil(abCd)+'s';
+    txt.style.color  = '#776';
+    if(btn) btn.classList.add('on-cooldown');
+
+    // Cooldown arc on button
+    if(_ablRingCtx){
+      const c = _ablRingCtx, s = 64, r = 28;
+      c.clearRect(0,0,s,s);
+      // Dark fill
+      c.beginPath(); c.arc(s/2,s/2,r,0,Math.PI*2);
+      c.fillStyle='rgba(0,0,0,0.45)'; c.fill();
+      // Remaining arc
+      const startA = -Math.PI/2;
+      const endA   = startA + (1-pct)*Math.PI*2;
+      c.beginPath(); c.arc(s/2,s/2,r,startA,endA);
+      c.strokeStyle='rgba(80,70,50,0.5)'; c.lineWidth=3; c.stroke();
+      // Elapsed arc
+      c.beginPath(); c.arc(s/2,s/2,r,endA,startA+Math.PI*2);
+      c.strokeStyle='rgba(255,200,0,0.65)'; c.lineWidth=3; c.stroke();
+    }
   } else {
-    fill.style.width='100%';
-    txt.textContent='RDY';
-    txt.style.color='#fc0';
+    fill.style.width='100%'; txt.textContent='RDY'; txt.style.color='#fc0';
+    if(btn) btn.classList.remove('on-cooldown');
+    if(_ablRingCtx) _ablRingCtx.clearRect(0,0,64,64);
   }
 }
 
@@ -2646,8 +2765,15 @@ function updatePowerups(dt) {
   powerups.forEach(p=>{
     if(!p.active) return;
     p.t+=dt;
-    p.mesh.rotation.y=p.t*1.6;
-    p.mesh.position.y=0.22+Math.sin(p.t*2.8)*0.11;
+    // Slow spin + hover
+    p.mesh.rotation.y = p.t * 1.2;
+    p.mesh.position.y = Math.sin(p.t*1.8)*0.12;
+    // Beam pulse
+    if(p.beam) p.beam.opacity = 0.1 + Math.sin(p.t*3.2)*0.08;
+    // Disc breathe
+    if(p.disc){ const ds=1+Math.sin(p.t*2.4)*0.15; p.mesh.children[p.mesh.children.length-1].scale.set(ds,1,ds); }
+    // Light pulse
+    p.light.intensity = 1.4 + Math.sin(p.t*2.8)*0.6;
     if(player.alive&&Math.sqrt((player.x-p.x)**2+(player.z-p.z)**2)<1.5) pickupPowerup(p);
   });
 }
