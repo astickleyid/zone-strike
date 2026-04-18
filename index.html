@@ -2342,18 +2342,16 @@ function doReload() {
   playSound('reload');
   const dur = { assault:2100, recon:1500, heavy:3200 }[player.cls];
 
-  // Weapon swing-down animation
+  // Weapon reload animation — tilt down, lerp restores automatically
   if(weaponGroup){
-    weaponGroup.position.y = -0.22;
-    weaponGroup.rotation.z = 0.38;
-    weaponGroup.rotation.x = 0.18;
+    weaponGroup.rotation.z = 0.44;
+    weaponGroup.rotation.x = 0.22;
     setTimeout(()=>{
       if(weaponGroup){
-        weaponGroup.position.y = 0;
         weaponGroup.rotation.z = 0;
         weaponGroup.rotation.x = 0;
       }
-    }, dur - 320);
+    }, dur - 280);
   }
 
   const rbar=document.getElementById('rbar');
@@ -3029,18 +3027,23 @@ function animate() {
       }
     } else { footT = Math.max(0, footT - dt*2); }
 
-    // Weapon sway
+    // Weapon sway + ADS visibility
     if(weaponGroup){
-      weaponSwayT+=dt;
-      const swayA = adsActive ? 0.001 : (moving?0.009:0.0022);
-      const swayRate = adsActive ? 0.8 : (moving ? 3.6 : 1.1);
-      weaponGroup.rotation.z=Math.sin(weaponSwayT*swayRate)*swayA;
-      // ADS: weapon moves to center
-      const adsOffX = adsActive ? -0.24 : 0;
-      const adsOffY = adsActive ? 0.18  : 0;
-      weaponGroup.position.x += (adsOffX - weaponGroup.position.x)*0.18;
-      weaponGroup.position.y += (adsOffY - weaponGroup.position.y)*0.18;
-      weaponGroup.rotation.x+=((0)-weaponGroup.rotation.x)*0.12;
+      weaponSwayT += dt;
+      // Hide weapon model entirely in ADS (scope takes over)
+      weaponGroup.visible = !adsActive;
+      if(muzzleFlash) muzzleFlash.visible = !adsActive;
+
+      if(!adsActive){
+        const swayA    = moving ? 0.009 : 0.0022;
+        const swayRate = moving ? 3.6   : 1.1;
+        weaponGroup.rotation.z = Math.sin(weaponSwayT*swayRate)*swayA;
+        // Restore X position (reload might have moved it)
+        weaponGroup.position.x += (0 - weaponGroup.position.x)*0.14;
+        // Y: lerp back to 0 unless reload animation is holding it down
+        if(!reloading) weaponGroup.position.y += (0 - weaponGroup.position.y)*0.14;
+        weaponGroup.rotation.x += (0 - weaponGroup.rotation.x)*0.12;
+      }
     }
   }
 
