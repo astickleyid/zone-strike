@@ -328,6 +328,12 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
 <script>
 'use strict';
 // ═══════════════════════════════════════════
@@ -351,6 +357,25 @@ renderer.shadowMap.type = isMobile ? THREE.BasicShadowMap : THREE.PCFSoftShadowM
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = isMobile ? 1.1 : 1.35;
 renderer.outputEncoding = THREE.sRGBEncoding;
+
+// ── Post-processing: Unreal Bloom ──
+let composer = null;
+function initComposer() {
+  if(isMobile || typeof THREE.EffectComposer === 'undefined') return;
+  try {
+    composer = new THREE.EffectComposer(renderer);
+    const renderPass = new THREE.RenderPass(scene, cam);
+    composer.addPass(renderPass);
+    const bloomPass = new THREE.UnrealBloomPass(
+      new THREE.Vector2(W, H),
+      0.38,   // strength — subtle, not blown out
+      0.55,   // radius
+      0.82    // threshold — only bright emissives bloom
+    );
+    composer.addPass(bloomPass);
+  } catch(e) { composer = null; }
+}
+setTimeout(initComposer, 100); // after scripts load
 
 const scene = new THREE.Scene();
 const FOG_NEAR = 52, FOG_FAR = isMobile ? 108 : 168;
@@ -616,7 +641,7 @@ const MAP = 38, CELL = 3;
 const grid = [];
 const wallMeshes = [];
 let weaponGroup = null, muzzleFlash = null;
-const weaponBaseZ = -0.31;
+const weaponBaseZ = -0.32;
 let weaponSwayT = 0;
 let radarDish = null;
 let dustMotes = null, dustMoteT = 0;
@@ -826,80 +851,199 @@ function setupLights() {
 }
 
 // ─────────────────────────────────────────
-//  WEAPON MODEL
+//  WEAPON MODEL — Arms + Gun
 // ─────────────────────────────────────────
 function buildWeapon() {
   if (weaponGroup) { cam.remove(weaponGroup); weaponGroup = null; }
   if (muzzleFlash) { cam.remove(muzzleFlash); muzzleFlash = null; }
 
   const g = new THREE.Group();
-  const darkMet = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.42, metalness: 0.72 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x3a2415, roughness: 0.88, metalness: 0.05 });
-  const tan = new THREE.MeshStandardMaterial({ color: 0x8a7050, roughness: 0.72, metalness: 0.15 });
 
-  if (player.cls === 'heavy') {
-    // LMG
-    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.082, 0.48), darkMet); g.add(rec);
-    const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.018, 0.44, 8), darkMet);
-    brl.rotation.x = Math.PI/2; brl.position.set(0, 0.02, 0.4); g.add(brl);
-    const brlheat = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.3, 8), tan);
-    brlheat.rotation.x = Math.PI/2; brlheat.position.set(0, 0.02, 0.28); g.add(brlheat);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.13, 0.09), darkMet);
-    mag.position.set(0, -0.11, 0.1); g.add(mag);
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.062, 0.2), wood);
-    stock.position.set(0, -0.01, -0.28); g.add(stock);
-    const bp1 = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.13, 0.01), darkMet);
-    bp1.position.set(-0.065, -0.11, 0.36); g.add(bp1);
-    const bp2 = bp1.clone(); bp2.position.x = 0.065; g.add(bp2);
+  // Materials
+  const M_GUN  = new THREE.MeshStandardMaterial({ color:0x1a1a18, roughness:0.28, metalness:0.88 });
+  const M_RAIL = new THREE.MeshStandardMaterial({ color:0x111110, roughness:0.18, metalness:0.95 });
+  const M_POLY = new THREE.MeshStandardMaterial({ color:0x2a2820, roughness:0.62, metalness:0.45 });
+  const M_SKIN = new THREE.MeshStandardMaterial({ color:0x8a6040, roughness:0.82, metalness:0.0  });
+  const M_GLOVE= new THREE.MeshStandardMaterial({ color:0x1e1a14, roughness:0.78, metalness:0.12 });
+  const M_WOOD = new THREE.MeshStandardMaterial({ color:0x4a2e14, roughness:0.88, metalness:0.0  });
+  const M_TAN  = new THREE.MeshStandardMaterial({ color:0x7a6040, roughness:0.72, metalness:0.08 });
+
+  // ─── RIGHT FOREARM + HAND ───
+  const rArm = new THREE.Group();
+  // Forearm
+  const foreR = new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.034,0.22,8), M_GLOVE);
+  foreR.rotation.x = Math.PI/2; foreR.position.set(0.06, -0.04, 0.08); rArm.add(foreR);
+  // Wrist
+  const wristR = new THREE.Mesh(new THREE.BoxGeometry(0.058,0.048,0.065), M_GLOVE);
+  wristR.position.set(0.06,-0.04,0.22); rArm.add(wristR);
+  // Hand/knuckles
+  const handR = new THREE.Mesh(new THREE.BoxGeometry(0.065,0.052,0.072), M_GLOVE);
+  handR.position.set(0.058,-0.04,0.29); rArm.add(handR);
+  // Trigger finger curl
+  const trigF = new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.011,0.04,6), M_SKIN);
+  trigF.rotation.x = 0.7; trigF.position.set(0.06,-0.062,0.31); rArm.add(trigF);
+  // Thumb
+  const thumbR = new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.01,0.038,6), M_SKIN);
+  thumbR.rotation.z = 0.6; thumbR.position.set(0.09,-0.022,0.27); rArm.add(thumbR);
+  g.add(rArm);
+
+  // ─── LEFT FOREARM + HAND (front grip) ───
+  const lArm = new THREE.Group();
+  const foreL = new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.032,0.28,8), M_GLOVE);
+  foreL.rotation.x = Math.PI/2; foreL.position.set(-0.042,-0.01,0.38); lArm.add(foreL);
+  const wristL = new THREE.Mesh(new THREE.BoxGeometry(0.052,0.044,0.06), M_GLOVE);
+  wristL.position.set(-0.042,-0.01,0.52); lArm.add(wristL);
+  const handL = new THREE.Mesh(new THREE.BoxGeometry(0.055,0.048,0.065), M_GLOVE);
+  handL.position.set(-0.04,-0.01,0.58); lArm.add(handL);
+  // Left fingers wrapped around foregrip
+  [-0.012,0.006,0.022].forEach((oy,i)=>{
+    const f = new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.009,0.038,6), M_GLOVE);
+    f.rotation.x = 0.3; f.position.set(-0.062,oy-0.01,0.59+i*0.005); lArm.add(f);
+  });
+  g.add(lArm);
+
+  if(player.cls === 'heavy') {
+    // ─── LMG M249 ───
+    // Upper receiver
+    const recv = new THREE.Mesh(new THREE.BoxGeometry(0.058,0.072,0.52), M_GUN); recv.position.set(0,-0.005,0.22); g.add(recv);
+    // Barrel — heavy
+    const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.013,0.016,0.62,10), M_GUN);
+    brl.rotation.x=Math.PI/2; brl.position.set(0,0.008,0.54); g.add(brl);
+    // Barrel jacket / heat shield
+    const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.026,0.026,0.38,12,1,true), M_POLY);
+    jacket.rotation.x=Math.PI/2; jacket.position.set(0,0.008,0.38); g.add(jacket);
+    // Gas tube along top
+    const gas = new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.42,6), M_GUN);
+    gas.rotation.x=Math.PI/2; gas.position.set(0,0.048,0.3); g.add(gas);
+    // Box mag
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.068,0.115,0.11), M_POLY);
+    mag.position.set(0.002,-0.11,0.16); g.add(mag);
+    const magR = new THREE.Mesh(new THREE.BoxGeometry(0.072,0.012,0.115), M_GUN);
+    magR.position.set(0.002,-0.048,0.16); g.add(magR);
+    // Stock
+    const stk = new THREE.Mesh(new THREE.BoxGeometry(0.045,0.058,0.22), M_POLY);
+    stk.position.set(0,0,-0.12); g.add(stk);
+    const stkB = new THREE.Mesh(new THREE.BoxGeometry(0.038,0.065,0.025), M_GUN);
+    stkB.position.set(0,0,-0.24); g.add(stkB);
+    // Carry handle sight
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.018,0.052,0.18), M_GUN);
+    handle.position.set(0,0.065,0.06); g.add(handle);
+    // Bipod legs (folded)
+    [-0.022,0.022].forEach(ox=>{
+      const leg=new THREE.Mesh(new THREE.BoxGeometry(0.006,0.072,0.006), M_GUN);
+      leg.position.set(ox,0.008,0.42); leg.rotation.z=ox>0?-0.3:0.3; g.add(leg);
+    });
+    // Muzzle brake
+    const mb = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.018,0.055,8), M_GUN);
+    mb.rotation.x=Math.PI/2; mb.position.set(0,0.008,0.88); g.add(mb);
     document.getElementById('wep-name').textContent = 'LMG · M249';
-  } else if (player.cls === 'recon') {
-    // SMG
-    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.058, 0.27), tan); g.add(rec);
-    const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.22, 8), darkMet);
-    brl.rotation.x = Math.PI/2; brl.position.set(0, 0.012, 0.23); g.add(brl);
-    const sup = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.016, 0.14, 10), darkMet);
-    sup.rotation.x = Math.PI/2; sup.position.set(0, 0.012, 0.36); g.add(sup);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.042), darkMet);
-    mag.position.set(0, -0.085, 0.06); g.add(mag);
-    const fold = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.04, 0.11), darkMet);
-    fold.position.set(0, -0.018, -0.16); g.add(fold);
-    document.getElementById('wep-name').textContent = 'SMG · MP5';
+
+  } else if(player.cls === 'recon') {
+    // ─── MP5 SMG ───
+    const recv = new THREE.Mesh(new THREE.BoxGeometry(0.038,0.058,0.28), M_POLY); recv.position.set(0,0,0.1); g.add(recv);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.036,0.032,0.28), M_GUN); upper.position.set(0,0.046,0.1); g.add(upper);
+    // Barrel
+    const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.011,0.24,10), M_GUN);
+    brl.rotation.x=Math.PI/2; brl.position.set(0,0.018,0.3); g.add(brl);
+    // Suppressor
+    const sup = new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.017,0.16,10), M_GUN);
+    sup.rotation.x=Math.PI/2; sup.position.set(0,0.018,0.44); g.add(sup);
+    const supB = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.01,10), M_RAIL);
+    supB.rotation.x=Math.PI/2; supB.position.set(0,0.018,0.52); g.add(supB);
+    // Curved mag
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.028,0.115,0.044), M_POLY);
+    mag.position.set(0,-0.098,0.04); g.add(mag);
+    mag.rotation.x = 0.08;
+    // Folding stock
+    const stk = new THREE.Mesh(new THREE.BoxGeometry(0.028,0.035,0.14), M_GUN);
+    stk.position.set(0,-0.012,-0.16); g.add(stk);
+    // Foregrip
+    const fgrip = new THREE.Mesh(new THREE.BoxGeometry(0.024,0.068,0.024), M_POLY);
+    fgrip.position.set(0,-0.065,0.22); g.add(fgrip);
+    // Rail
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.034,0.01,0.18), M_RAIL);
+    rail.position.set(0,0.064,0.06); g.add(rail);
+    // Red dot sight
+    const rdBase = new THREE.Mesh(new THREE.BoxGeometry(0.025,0.022,0.042), M_GUN);
+    rdBase.position.set(0,0.076,0.05); g.add(rdBase);
+    const rdTube = new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,0.044,8), M_GUN);
+    rdTube.rotation.x=Math.PI/2; rdTube.position.set(0,0.076,0.05); g.add(rdTube);
+    const rdLens = new THREE.Mesh(new THREE.CircleGeometry(0.011,8),
+      new THREE.MeshStandardMaterial({color:0x002244,roughness:0.1,metalness:0.3,transparent:true,opacity:0.7}));
+    rdLens.rotation.x=Math.PI/2; rdLens.rotation.y=Math.PI/2; rdLens.position.set(0,0.076,0.072); g.add(rdLens);
+    document.getElementById('wep-name').textContent = 'SMG · MP5SD';
+
   } else {
-    // AR
-    const rec = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.068, 0.37), darkMet); g.add(rec);
-    const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.0135, 0.0158, 0.33, 8), darkMet);
-    brl.rotation.x = Math.PI/2; brl.position.set(0, 0.015, 0.31); g.add(brl);
-    const muzz = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.017, 0.065, 8), darkMet);
-    muzz.rotation.x = Math.PI/2; muzz.position.set(0, 0.015, 0.49); g.add(muzz);
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.052, 0.15), tan);
-    stock.position.set(0, -0.014, -0.22); g.add(stock);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.092, 0.052), darkMet);
-    mag.position.set(0, -0.078, 0.08); g.add(mag);
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.013, 0.24), darkMet);
-    rail.position.set(0, 0.044, 0.09); g.add(rail);
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.09, 8), wood);
-    grip.position.set(0, -0.062, 0.19); g.add(grip);
+    // ─── M4A1 AR ───
+    // Lower receiver
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(0.044,0.068,0.35), M_POLY); lower.position.set(0,-0.008,0.12); g.add(lower);
+    // Upper receiver
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.048,0.34), M_GUN); upper.position.set(0,0.04,0.12); g.add(upper);
+    // Charging handle
+    const ch = new THREE.Mesh(new THREE.BoxGeometry(0.014,0.018,0.028), M_GUN);
+    ch.position.set(0,0.07,-0.07); g.add(ch);
+    // Barrel
+    const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.011,0.014,0.42,10), M_GUN);
+    brl.rotation.x=Math.PI/2; brl.position.set(0,0.018,0.39); g.add(brl);
+    // Gas block
+    const gasBlk = new THREE.Mesh(new THREE.BoxGeometry(0.022,0.022,0.028), M_GUN);
+    gasBlk.position.set(0,0.022,0.28); g.add(gasBlk);
+    // MLOK handguard
+    const hguard = new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.022,0.28,8,1,true), M_GUN);
+    hguard.rotation.x=Math.PI/2; hguard.position.set(0,0.018,0.26); g.add(hguard);
+    // Handguard rails — flat cuts
+    [0,Math.PI/2,Math.PI,3*Math.PI/2].forEach(a=>{
+      const slot=new THREE.Mesh(new THREE.BoxGeometry(0.006,0.006,0.24), M_RAIL);
+      slot.position.set(Math.sin(a)*0.024, 0.018+Math.cos(a)*0.024, 0.26); g.add(slot);
+    });
+    // Muzzle device
+    const muzz = new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.013,0.062,8), M_GUN);
+    muzz.rotation.x=Math.PI/2; muzz.position.set(0,0.018,0.62); g.add(muzz);
+    // Flash hider tines
+    [0,Math.PI/3*2,Math.PI/3*4].forEach(a=>{
+      const tine=new THREE.Mesh(new THREE.BoxGeometry(0.005,0.022,0.032), M_GUN);
+      tine.position.set(Math.sin(a)*0.015, 0.018+Math.cos(a)*0.015, 0.65); g.add(tine);
+    });
+    // Curved 30-rd mag
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.034,0.108,0.056), M_POLY);
+    mag.position.set(0,-0.098,0.08); mag.rotation.x=0.06; g.add(mag);
+    const magBase = new THREE.Mesh(new THREE.BoxGeometry(0.036,0.01,0.06), M_GUN);
+    magBase.position.set(0,-0.043,0.08); g.add(magBase);
+    // Collapsible stock
+    const stk = new THREE.Mesh(new THREE.BoxGeometry(0.036,0.044,0.18), M_GUN);
+    stk.position.set(0,-0.008,-0.17); g.add(stk);
+    const stkBuf = new THREE.Mesh(new THREE.BoxGeometry(0.03,0.05,0.024), M_POLY);
+    stkBuf.position.set(0,-0.006,-0.27); g.add(stkBuf);
+    // Pistol grip
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.026,0.072,0.038), M_POLY);
+    grip.position.set(0,-0.068,-0.04); grip.rotation.x=0.2; g.add(grip);
+    // Top rail
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.038,0.01,0.28), M_RAIL);
+    rail.position.set(0,0.068,0.1); g.add(rail);
+    // ACOG-style scope
+    const scopeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.018,0.12,8), M_GUN);
+    scopeBody.rotation.x=Math.PI/2; scopeBody.position.set(0,0.086,0.12); g.add(scopeBody);
+    const scopeFront = new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.016,0.028,8), M_RAIL);
+    scopeFront.rotation.x=Math.PI/2; scopeFront.position.set(0,0.086,0.19); g.add(scopeFront);
+    const scopeLens = new THREE.Mesh(new THREE.CircleGeometry(0.012,8),
+      new THREE.MeshStandardMaterial({color:0x001133,roughness:0.05,metalness:0.2,transparent:true,opacity:0.8}));
+    scopeLens.rotation.y=Math.PI/2; scopeLens.position.set(0,0.086,0.206); g.add(scopeLens);
     document.getElementById('wep-name').textContent = 'AR · M4A1';
   }
 
-  g.position.set(0.24, -0.18, weaponBaseZ);
+  // Position — lower right, pushed back from screen center
+  g.position.set(0.22, -0.19, -0.32);
   cam.add(g);
   weaponGroup = g;
 
-  muzzleFlash = new THREE.PointLight(0xff9944, 0, 8.5);
-  muzzleFlash.position.set(0.24, -0.18, weaponBaseZ - 0.58);
+  // Muzzle flash
+  const muzzZ = player.cls==='heavy' ? -0.32-0.62 : player.cls==='recon' ? -0.32-0.26 : -0.32-0.42;
+  muzzleFlash = new THREE.PointLight(0xff9944, 0, 9);
+  muzzleFlash.position.set(0.22, -0.19, muzzZ);
   cam.add(muzzleFlash);
-
-  // Muzzle cross geo — star flash sprite
-  const mzGeo = new THREE.BufferGeometry();
-  const mzVerts = [];
-  for(let i=0;i<6;i++){
-    const a=i*Math.PI/3, r=i%2===0?0.07:0.02;
-    mzVerts.push(Math.cos(a)*r, Math.sin(a)*r, 0);
-  }
   const mzMat = new THREE.MeshBasicMaterial({color:0xffffc0,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide});
-  const mzMesh = new THREE.Mesh(new THREE.CircleGeometry(0.055,8), mzMat);
-  mzMesh.position.set(0.24,-0.18,weaponBaseZ-0.6);
+  const mzMesh = new THREE.Mesh(new THREE.CircleGeometry(0.06,8), mzMat);
+  mzMesh.position.copy(muzzleFlash.position);
   cam.add(mzMesh);
   muzzleFlash.userData.sprite = mzMesh;
   muzzleFlash.userData.spriteMat = mzMat;
@@ -3065,7 +3209,7 @@ function animate() {
   updateDust(dt);
   drawDmgDirs(dt);
 
-  renderer.render(scene, cam);
+  if(composer) composer.render(); else renderer.render(scene, cam);
 }
 
 // ─────────────────────────────────────────
@@ -3076,6 +3220,7 @@ window.addEventListener('resize', ()=>{
   renderer.setSize(W,H);
   cam.aspect=W/H;
   cam.updateProjectionMatrix();
+  if(composer) composer.setSize(W,H);
   if(ddCtx){ ddCanvas.width=W; ddCanvas.height=H; }
 });
 
