@@ -74,6 +74,17 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
 /* ── ADS BUTTON (mobile) ── */
 #ads-btn{position:absolute;right:108px;bottom:130px;width:58px;height:58px;border-radius:50%;border:2px solid rgba(180,160,120,0.45);background:radial-gradient(circle,rgba(40,34,24,0.55),rgba(25,21,15,0.35));color:rgba(200,180,130,0.9);font-size:10px;letter-spacing:2px;display:flex;align-items:center;justify-content:center;font-weight:bold;z-index:15;touch-action:none;pointer-events:all;transition:all 0.1s;-webkit-tap-highlight-color:transparent}
 #ads-btn.ads-active{background:radial-gradient(circle,rgba(255,160,40,0.3),rgba(180,90,20,0.18));border-color:rgba(255,180,60,0.85);color:#ffc840;box-shadow:0 0 16px rgba(255,160,40,0.45)}
+#move-btns{position:absolute;right:182px;bottom:120px;display:flex;flex-direction:column;gap:12px;z-index:15;pointer-events:all;touch-action:none}
+.mbtn.small{width:50px;height:50px}
+.mbtn.small .mbtn-icon{font-size:20px}
+#crouch-btn.crouch-active{background:radial-gradient(circle,rgba(120,180,255,0.3),rgba(40,90,160,0.18));border-color:rgba(120,180,255,0.8);color:#9cf}
+#pause-btn{position:absolute;top:14px;right:14px;width:40px;height:40px;border-radius:8px;border:1.5px solid rgba(180,160,120,0.4);background:rgba(20,17,12,0.6);color:rgba(200,180,130,0.85);font-size:16px;z-index:16;pointer-events:all;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+#pause-overlay{position:fixed;inset:0;background:rgba(6,5,4,0.82);backdrop-filter:blur(6px);z-index:60;display:none;align-items:center;justify-content:center}
+#pause-overlay.show{display:flex}
+#pause-panel{display:flex;flex-direction:column;gap:14px;align-items:center;min-width:260px}
+#pause-title{font-size:24px;letter-spacing:8px;color:#e8d8b0;margin-bottom:18px;font-weight:bold}
+.pause-opt{width:240px;padding:15px;border:1.5px solid rgba(180,160,120,0.45);background:rgba(30,25,18,0.7);color:#d8c89a;font-size:13px;letter-spacing:3px;font-weight:bold;border-radius:6px;cursor:pointer;transition:all 0.12s;-webkit-tap-highlight-color:transparent}
+.pause-opt:active,.pause-opt:hover{background:rgba(255,160,40,0.18);border-color:rgba(255,180,60,0.7);color:#ffc840}
 
 /* ── DIRECTIONAL DAMAGE ARCS ── */
 #dmg-dir{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:12}
@@ -247,11 +258,24 @@ body{background:#1a1812;overflow:hidden;font-family:'Courier New',monospace;posi
       <div id="abl-txt">RDY</div>
     </div>
   </div>
+  <button id="pause-btn">⏸</button>
+  <div id="pause-overlay">
+    <div id="pause-panel">
+      <h2 id="pause-title">PAUSED</h2>
+      <button class="pause-opt" id="resume-btn">RESUME</button>
+      <button class="pause-opt" id="restart-btn">RESTART</button>
+      <button class="pause-opt" id="quit-btn">QUIT TO MENU</button>
+    </div>
+  </div>
   <div id="joystick">
     <div id="joy-base"></div>
     <div id="joy-stick"></div>
   </div>
   <div id="ads-btn">ADS</div>
+  <div id="move-btns">
+    <button class="mbtn small" id="jump-btn"><span class="mbtn-icon">⤴</span></button>
+    <button class="mbtn small" id="crouch-btn"><span class="mbtn-icon">⤵</span></button>
+  </div>
   <div id="mobile-btns">
     <div class="mbtn" id="ability-btn">
       <span class="mbtn-icon" id="abl-icon">💣</span>
@@ -612,6 +636,7 @@ function playSound(type) {
 
 // ── Game State ──
 let gameActive = false;
+let gamePaused = false;
 let selClass = 'assault';
 let yaw = 0, pitch = 0;
 const score = { you: 0, enemy: 0 };
@@ -646,8 +671,79 @@ const player = {
   dmg: 28,
   ammo: 30, maxAmmo: 30, reserve: 90,
   alive: true, cls: 'assault',
-  kills: 0, streak: 0, lastKillTime: 0
+  kills: 0, streak: 0, lastKillTime: 0,
+  // ── physics / traversal state ──
+  y: 0,            // vertical offset above stand height
+  vy: 0,           // vertical velocity
+  grounded: true,
+  crouching: false,
+  sliding: false,
+  slideT: 0,       // remaining slide time
+  slideVX: 0, slideVZ: 0,
+  mantling: false,
+  mantleT: 0, mantleStartY: 0, mantleTargetY: 0,
+  mantleStartXZ: null, mantleTargetXZ: null,
+  lastSprintMove: 0
 };
+// Movement tuning
+const STAND_H = 1.7, CROUCH_H = 1.05, GRAVITY = 18.0, JUMP_V = 6.2;
+const SLIDE_DUR = 0.55, SLIDE_BOOST = 1.9, MANTLE_DUR = 0.42;
+
+// ── Traversal actions ──
+function doJump(){
+  if(!player.alive || player.mantling) return;
+  if(player.grounded && !player.sliding){
+    player.vy = JUMP_V;
+    player.grounded = false;
+    if(player.crouching) player.crouching = false;
+  }
+}
+function toggleCrouch(){
+  if(!player.alive || player.mantling || player.sliding) return;
+  // If sprinting and moving, crouch becomes a slide
+  if(sprintActive && (Math.abs(joyX)>0.1||Math.abs(joyY)>0.1) && player.grounded && !player.crouching){
+    startSlide();
+  } else {
+    player.crouching = !player.crouching;
+  }
+}
+function startSlide(){
+  if(player.sliding || !player.grounded) return;
+  player.sliding = true;
+  player.slideT = SLIDE_DUR;
+  const spd = player.speed*SLIDE_BOOST*(isMobile?56:62);
+  player.slideVX = (joyY*Math.sin(yaw)+joyX*Math.cos(yaw))*spd;
+  player.slideVZ = (joyY*Math.cos(yaw)-joyX*Math.sin(yaw))*spd;
+  sprintActive = false;
+  document.getElementById('sprint-ind').style.opacity='0';
+  playSound('footL');
+}
+// Auto-mantle: if blocked by a low obstacle with clear space on top, climb it
+function tryMantle(dx, dz){
+  if(player.mantling || !player.grounded) return;
+  const ahead = 0.7;
+  const dirLen = Math.hypot(dx,dz)||1;
+  const nx = player.x + (dx/dirLen)*ahead;
+  const nz = player.z + (dz/dirLen)*ahead;
+  // Must be wall at feet but open at chest-jump height (low obstacle)
+  if(isWall(nx,nz)){
+    // landing spot just past the obstacle
+    const lx = player.x + (dx/dirLen)*1.3;
+    const lz = player.z + (dz/dirLen)*1.3;
+    if(!isWall(lx,lz)){
+      player.mantling = true;
+      player.mantleT = 0;
+      player.mantleStartXZ = {x:player.x, z:player.z};
+      player.mantleTargetXZ = {x:lx, z:lz};
+      player.mantleStartY = player.y;
+      player.mantleTargetY = 0; // hop up and over to ground level past it
+      player.vy = 0;
+      playSound('footR');
+    }
+  }
+}
+
+
 
 // ── Map ──
 const MAP = 38, CELL = 3;
@@ -2311,6 +2407,34 @@ document.getElementById('reload-btn').addEventListener('touchstart', e=>{
   e.preventDefault(); e.stopPropagation();
   if(gameActive && !reloading) doReload();
 },{passive:false});
+document.getElementById('jump-btn').addEventListener('touchstart', e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(gameActive) doJump();
+},{passive:false});
+document.getElementById('crouch-btn').addEventListener('touchstart', e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(gameActive){ toggleCrouch(); document.getElementById('crouch-btn').classList.toggle('crouch-active', player.crouching); }
+},{passive:false});
+
+// ── PAUSE ──
+function setPaused(p){
+  gamePaused = p;
+  document.getElementById('pause-overlay').classList.toggle('show', p);
+  if(!p) clock.getDelta(); // discard time accumulated while paused
+}
+document.getElementById('pause-btn').addEventListener('click', ()=>{ if(gameActive) setPaused(true); });
+document.getElementById('resume-btn').addEventListener('click', ()=> setPaused(false));
+document.getElementById('restart-btn').addEventListener('click', ()=>{ setPaused(false); initGame(); });
+document.getElementById('quit-btn').addEventListener('click', ()=>{
+  setPaused(false); gameActive=false;
+  document.getElementById('hud').style.display='none';
+  resetMenu();
+});
+document.addEventListener('keydown', e=>{ if(e.code==='Escape'&&gameActive) setPaused(!gamePaused); });
+document.getElementById('crouch-btn').addEventListener('touchstart', e=>{
+  e.preventDefault(); e.stopPropagation();
+  if(gameActive){ toggleCrouch(); document.getElementById('crouch-btn').classList.toggle('crouch-active', player.crouching); }
+},{passive:false});
 document.getElementById('ability-btn').addEventListener('touchstart', e=>{
   e.preventDefault(); e.stopPropagation();
   if(!gameActive) return;
@@ -2364,6 +2488,8 @@ document.addEventListener('keydown', e=>{
   if(!gameActive) return;
   if(e.code==='KeyR'&&!reloading) doReload();
   if(e.code==='KeyE') useAbility();
+  if(e.code==='Space'){ e.preventDefault(); doJump(); }
+  if(e.code==='KeyC'||e.code==='ControlLeft'){ e.preventDefault(); toggleCrouch(); }
   if(e.code==='ShiftLeft'){ sprintActive=true; document.getElementById('sprint-ind').style.opacity='1'; }
   if(e.code==='KeyF'&&!reloading) doReload();
   if(e.code==='Tab'){ e.preventDefault(); document.getElementById('scoreboard').style.display='block'; }
@@ -2977,6 +3103,9 @@ function initGame() {
   }[player.cls];
   Object.assign(player, clsStats);
   player.maxHp=clsStats.hp; player.alive=true; player.kills=0; player.streak=0;
+  player.y=0; player.vy=0; player.grounded=true; player.crouching=false;
+  player.sliding=false; player.slideT=0; player.mantling=false;
+  document.getElementById('crouch-btn')?.classList.remove('crouch-active');
 
   bots.forEach(b=>scene.remove(b.g)); bots.length=0;
   // Clear detail effects from previous round
@@ -3120,6 +3249,7 @@ function resetMenu() {
 function animate() {
   if(!gameActive) return;
   requestAnimationFrame(animate);
+  if(gamePaused){ return; }
   const dt=Math.min(clock.getDelta(), 0.05);
 
   // ── Apply accumulated mobile aim deltas ──
@@ -3162,22 +3292,61 @@ function animate() {
 
   // Player movement
   if(player.alive){
-    const sprint=sprintActive?1.65:1;
+    // ── MANTLE (auto-climb over low obstacles) takes over fully ──
+    if(player.mantling){
+      player.mantleT += dt;
+      const t = Math.min(1, player.mantleT / MANTLE_DUR);
+      const ease = t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; // easeInOut
+      player.x = player.mantleStartXZ.x + (player.mantleTargetXZ.x - player.mantleStartXZ.x)*ease;
+      player.z = player.mantleStartXZ.z + (player.mantleTargetXZ.z - player.mantleStartXZ.z)*ease;
+      player.y = player.mantleStartY + (player.mantleTargetY - player.mantleStartY)*ease;
+      cam.position.set(player.x, STAND_H + player.y, player.z);
+      if(t>=1){ player.mantling=false; player.y=0; player.vy=0; player.grounded=true; }
+    } else {
+    const moving0=Math.abs(joyX)>0.08||Math.abs(joyY)>0.08;
+
+    // ── Crouch height lerp ──
+    const targetStand = player.crouching ? CROUCH_H : STAND_H;
+
+    // ── Slide ──
+    let slideMul = 1;
+    if(player.sliding){
+      player.slideT -= dt;
+      slideMul = 0; // slide uses its own stored velocity
+      player.x += player.slideVX*dt;
+      player.z += player.slideVZ*dt;
+      player.slideVX *= 0.92; player.slideVZ *= 0.92;
+      if(player.slideT<=0 || (Math.abs(player.slideVX)+Math.abs(player.slideVZ))<0.4){
+        player.sliding=false; player.crouching=true; // end in crouch
+      }
+    }
+
+    const sprint=(sprintActive&&!player.crouching)?1.65:(player.crouching?0.55:1);
     const spd=player.speed*sprint*(isMobile?56:62);
-    // Convert joystick to world movement
-    // joyY=-1=forward, joyX=+1=strafe right
-    const mx=(joyY*Math.sin(yaw)+joyX*Math.cos(yaw))*spd*dt;
-    const mz=(joyY*Math.cos(yaw)-joyX*Math.sin(yaw))*spd*dt;
+    const mx=(joyY*Math.sin(yaw)+joyX*Math.cos(yaw))*spd*dt*slideMul;
+    const mz=(joyY*Math.cos(yaw)-joyX*Math.sin(yaw))*spd*dt*slideMul;
     const pad=0.42;
     if(!isWall(player.x+mx,player.z+pad)&&!isWall(player.x+mx,player.z-pad)) player.x+=mx;
+    else if(player.grounded && !player.mantling) tryMantle(mx, 0); // hit wall moving X → try mantle
     if(!isWall(player.x+pad,player.z+mz)&&!isWall(player.x-pad,player.z+mz)) player.z+=mz;
+    else if(player.grounded && !player.mantling) tryMantle(0, mz);
+
+    // ── Vertical physics (jump + gravity) ──
+    player.vy -= GRAVITY*dt;
+    player.y += player.vy*dt;
+    if(player.y<=0){ player.y=0; player.vy=0; player.grounded=true; }
+    else player.grounded=false;
+
+    const moving=moving0;
+    const bobAmt = adsActive ? 0.002 : (player.sliding ? 0.0 : (moving ? 0.016 : 0.004));
+    const standNow = targetStand; // (instant for now; crouch toggles)
+    cam.position.set(player.x, standNow + player.y + Math.sin(Date.now()*0.0065)*bobAmt + shakeY*0.04, player.z);
+    }
 
     const moving=Math.abs(joyX)>0.08||Math.abs(joyY)>0.08;
-    const bobAmt = adsActive ? 0.002 : (moving ? 0.016 : 0.004);
-    cam.position.set(player.x, 1.7+Math.sin(Date.now()*0.0065)*bobAmt + shakeY*0.04, player.z);
 
     // ── Dynamic crosshair spread ──
-    const targetSpread = adsActive ? 0 : (moving ? (sprintActive?1:0.55) : (shootCd>0 ? 0.65 : 0.08));
+    const targetSpread = adsActive ? 0 : (player.sliding ? 1.2 : (moving ? (sprintActive?1:0.55) : (shootCd>0 ? 0.65 : 0.08)));
     xhairSpread += (targetSpread - xhairSpread) * 0.18;
     const gap = Math.round(xhairSpread * 8);
     const xhT = document.getElementById('xhair');
@@ -3190,9 +3359,9 @@ function animate() {
     }
 
     // ── Footstep audio ──
-    if(moving && !adsActive){
+    if(moving && !adsActive && player.grounded && !player.sliding){
       footT += dt;
-      const stepRate = sprintActive ? 0.28 : 0.42;
+      const stepRate = sprintActive ? 0.28 : (player.crouching ? 0.6 : 0.42);
       if(footT > stepRate){
         footT = 0;
         lastFootStep = !lastFootStep;
