@@ -1,4 +1,3 @@
-import { Ray } from '@babylonjs/core/Culling/ray';
 import { Vector3, Color3 } from '@babylonjs/core/Maths/math';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
@@ -61,12 +60,16 @@ export class Game {
     if (now - this.lastShot < interval) return;
     this.lastShot = now;
     const scene = this.ge.scene;
-    const ray = new Ray(this.player.position.clone(), this.player.forward, 100);
+    // Cast through the exact center pixel where the crosshair is — guarantees alignment.
+    const w = this.ge.engine.getRenderWidth();
+    const h = this.ge.engine.getRenderHeight();
+    const ray = scene.createPickingRay(w / 2, h / 2, null, this.player.cam);
     const pick = scene.pickWithRay(ray, (m: AbstractMesh) => m.name === 'bot' && m.isEnabled());
-    const fwd = this.player.forward;
-    const right = new Vector3(fwd.z, 0, -fwd.x).normalize();
-    const muzzle = this.player.position.add(fwd.scale(1.4)).add(right.scale(0.18)).add(new Vector3(0, -0.22, 0));
-    const end = pick?.hit && pick.pickedPoint ? pick.pickedPoint : this.player.position.add(fwd.scale(80));
+    // Tracer starts at a gun-muzzle offset but ends exactly where the crosshair pointed.
+    const dir = ray.direction;
+    const right = new Vector3(dir.z, 0, -dir.x).normalize();
+    const muzzle = ray.origin.add(dir.scale(1.2)).add(right.scale(0.16)).add(new Vector3(0, -0.2, 0));
+    const end = pick?.hit && pick.pickedPoint ? pick.pickedPoint : ray.origin.add(dir.scale(80));
     this.spawnTracer(muzzle, end);
     if (pick?.hit && pick.pickedMesh) {
       const bot: Bot | undefined = pick.pickedMesh.metadata?.bot;
