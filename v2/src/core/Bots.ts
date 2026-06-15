@@ -22,6 +22,7 @@ export class Bot {
     mat.emissiveColor = new Color3(0.15, 0.02, 0.02);
     m.material = mat;
     m.checkCollisions = false;
+    m.isPickable = true;
     (m.metadata ||= {}).bot = this;
     this.mesh = m; this.mat = mat;
     this.target = this.pickTarget();

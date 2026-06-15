@@ -60,12 +60,10 @@ export class Game {
     if (now - this.lastShot < interval) return;
     this.lastShot = now;
     const scene = this.ge.scene;
-    // Cast through the exact center pixel where the crosshair is — guarantees alignment.
-    const w = this.ge.engine.getRenderWidth();
-    const h = this.ge.engine.getRenderHeight();
-    const ray = scene.createPickingRay(w / 2, h / 2, null, this.player.cam);
+    // Camera's true forward ray — derived from the camera matrix, so it points
+    // exactly through the center crosshair. No screen-coordinate math.
+    const ray = this.player.cam.getForwardRay(120);
     const pick = scene.pickWithRay(ray, (m: AbstractMesh) => m.name === 'bot' && m.isEnabled());
-    // Tracer starts at a gun-muzzle offset but ends exactly where the crosshair pointed.
     const dir = ray.direction;
     const right = new Vector3(dir.z, 0, -dir.x).normalize();
     const muzzle = ray.origin.add(dir.scale(1.2)).add(right.scale(0.16)).add(new Vector3(0, -0.2, 0));
