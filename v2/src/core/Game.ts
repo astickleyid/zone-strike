@@ -30,12 +30,22 @@ export class Game {
     this.wireButtons();
 
     let last = performance.now();
+    let errored = false;
     arena.scene.onBeforeRenderObservable.add(() => {
-      const now = performance.now();
-      const dt = Math.min((now - last) / 1000, 0.05); last = now;
-      this.player.update(dt, this.input);
-      for (const b of this.bots) b.update(dt);
-      if (this.input.firing) this.tryShoot(now);
+      if (errored) return;
+      try {
+        const now = performance.now();
+        const dt = Math.min((now - last) / 1000, 0.05); last = now;
+        this.player.update(dt, this.input);
+        for (const b of this.bots) b.update(dt);
+        if (this.input.firing) this.tryShoot(now);
+      } catch (e) {
+        errored = true;
+        const box = document.getElementById('err');
+        const msg = (e && ((e as Error).stack || (e as Error).message)) || String(e);
+        if (box) { box.style.display = 'block'; box.textContent += 'LOOP ERROR: ' + msg + '\n'; }
+        console.error(e);
+      }
     });
 
     arena.scene.executeWhenReady(() => {

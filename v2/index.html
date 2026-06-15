@@ -27,6 +27,16 @@
   </style>
 </head>
 <body>
+  <div id="err" style="position:fixed;inset:0;z-index:99;display:none;padding:18px;color:#ff6b4a;background:#0a0805;font:12px/1.5 monospace;white-space:pre-wrap;overflow:auto"></div>
+  <script>
+    (function(){
+      var box=document.getElementById('err');
+      function show(msg){ if(!box) return; box.style.display='block'; box.textContent += msg + "\n"; }
+      window.__stage=function(s){ var l=document.getElementById('boot-loader'); if(l) l.textContent=s; };
+      window.addEventListener('error', function(e){ show('ERROR: '+(e.message||e.error||e)+(e.filename?(' @ '+e.filename+':'+e.lineno):'')); });
+      window.addEventListener('unhandledrejection', function(e){ show('PROMISE REJECT: '+(e.reason && (e.reason.stack||e.reason.message||e.reason) || e)); });
+    })();
+  </script>
   <canvas id="game"></canvas>
   <div id="hud">
     <div id="crosshair"></div>

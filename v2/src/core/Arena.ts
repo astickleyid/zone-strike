@@ -1,3 +1,4 @@
+import '@babylonjs/core/Collisions/collisionCoordinator';
 import { Scene } from '@babylonjs/core/scene';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
