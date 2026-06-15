@@ -25,7 +25,8 @@ export class Input {
 
   takeJump() { const v = this._jump; this._jump = false; return v; }
   takeCrouch() { const v = this._crouch; this._crouch = false; return v; }
-  get firing() { return this._firing || this._fire; }
+  /** Held-fire state for full-auto. Edge flag (_fire) is reserved for semi-auto later. */
+  get firing() { return this._firing; }
   takeFireEdge() { const v = this._fire; this._fire = false; return v; }
   consumeLook() { const dx = this.lookDX, dy = this.lookDY; this.lookDX = 0; this.lookDY = 0; return { dx, dy }; }
 
