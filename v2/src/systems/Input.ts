@@ -9,6 +9,7 @@ export class Input {
   // Accumulated look delta (consumed each frame)
   lookDX = 0; lookDY = 0;
   sprint = false;
+  ads = false;
   // Edge-triggered actions (consume via take*)
   private _jump = false; private _crouch = false; private _fire = false; private _firing = false;
 
@@ -46,8 +47,10 @@ export class Input {
     this.el.addEventListener('mousedown', (e) => {
       if (document.pointerLockElement !== this.el) { this.el.requestPointerLock(); return; }
       if (e.button === 0) { this._fire = true; this._firing = true; }
+      if (e.button === 2) this.ads = true;
     });
-    addEventListener('mouseup', (e) => { if (e.button === 0) this._firing = false; });
+    addEventListener('mouseup', (e) => { if (e.button === 0) this._firing = false; if (e.button === 2) this.ads = false; });
+    this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === this.el) { this.lookDX += e.movementX; this.lookDY += e.movementY; }
     });
@@ -98,4 +101,6 @@ export class Input {
   pressCrouch() { this._crouch = true; }
   startFire() { this._firing = true; this._fire = true; }
   stopFire() { this._firing = false; }
+  toggleAds() { this.ads = !this.ads; return this.ads; }
+  toggleSprint() { this.sprint = !this.sprint; return this.sprint; }
 }

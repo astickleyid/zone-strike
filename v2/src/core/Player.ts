@@ -16,10 +16,12 @@ export class Player {
   vy = 0;
   grounded = true;
   crouching = false;
+  ads = false;
   hp = 100;
   alive = true;
   private yaw = 0; private pitch = 0;
   private scene: Scene;
+  private baseFov = 1.25;
 
   constructor(scene: Scene, spawn: Vector3) {
     this.scene = scene;
@@ -56,8 +58,13 @@ export class Player {
     const c = CONFIG.player;
 
     const { dx, dy } = input.consumeLook();
-    this.yaw += dx * this.sens;
-    this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch + dy * this.sens));
+    this.ads = input.ads;
+    const sensMul = this.ads ? 0.55 : 1;
+    this.yaw += dx * this.sens * sensMul;
+    this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch + dy * this.sens * sensMul));
+    // ADS FOV zoom
+    const targetFov = this.ads ? 0.8 : this.baseFov;
+    this.cam.fov += (targetFov - this.cam.fov) * Math.min(1, dt * 12);
 
     if (input.takeCrouch()) {
       this.crouching = !this.crouching;
