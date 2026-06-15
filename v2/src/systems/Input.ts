@@ -1,0 +1,100 @@
+/**
+ * Input — unified touch + keyboard/mouse input.
+ * Left screen half = floating movement joystick. Right half = look.
+ * Desktop: WASD move, pointer-lock mouse look, Space jump, C crouch, Shift sprint.
+ */
+export class Input {
+  // Movement axes, -1..1. moveX = strafe, moveY = forward(+)/back(-)
+  moveX = 0; moveY = 0;
+  // Accumulated look delta (consumed each frame)
+  lookDX = 0; lookDY = 0;
+  sprint = false;
+  // Edge-triggered actions (consume via take*)
+  private _jump = false; private _crouch = false; private _fire = false; private _firing = false;
+
+  private keys: Record<string, boolean> = {};
+  private touches = new Map<number, { type: 'move' | 'look'; ox: number; oy: number }>();
+  private isMobile: boolean;
+  private el: HTMLElement;
+
+  constructor(el: HTMLElement) {
+    this.el = el;
+    this.isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || 'ontouchstart' in window;
+    if (this.isMobile) this.bindTouch(); else this.bindDesktop();
+  }
+
+  takeJump() { const v = this._jump; this._jump = false; return v; }
+  takeCrouch() { const v = this._crouch; this._crouch = false; return v; }
+  get firing() { return this._firing || this._fire; }
+  takeFireEdge() { const v = this._fire; this._fire = false; return v; }
+  consumeLook() { const dx = this.lookDX, dy = this.lookDY; this.lookDX = 0; this.lookDY = 0; return { dx, dy }; }
+
+  private bindDesktop() {
+    addEventListener('keydown', (e) => {
+      this.keys[e.code] = true;
+      if (e.code === 'Space') { this._jump = true; e.preventDefault(); }
+      if (e.code === 'KeyC' || e.code === 'ControlLeft') this._crouch = true;
+      if (e.code === 'ShiftLeft') this.sprint = true;
+      this.updateKeyAxes();
+    });
+    addEventListener('keyup', (e) => {
+      this.keys[e.code] = false;
+      if (e.code === 'ShiftLeft') this.sprint = false;
+      this.updateKeyAxes();
+    });
+    this.el.addEventListener('mousedown', (e) => {
+      if (document.pointerLockElement !== this.el) { this.el.requestPointerLock(); return; }
+      if (e.button === 0) { this._fire = true; this._firing = true; }
+    });
+    addEventListener('mouseup', (e) => { if (e.button === 0) this._firing = false; });
+    addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement === this.el) { this.lookDX += e.movementX; this.lookDY += e.movementY; }
+    });
+  }
+
+  private updateKeyAxes() {
+    this.moveX = (this.keys['KeyD'] ? 1 : 0) - (this.keys['KeyA'] ? 1 : 0);
+    this.moveY = (this.keys['KeyW'] ? 1 : 0) - (this.keys['KeyS'] ? 1 : 0);
+  }
+
+  private bindTouch() {
+    const half = () => window.innerWidth * 0.45;
+    this.el.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      for (const t of Array.from(e.changedTouches)) {
+        const left = t.clientX < half();
+        this.touches.set(t.identifier, { type: left ? 'move' : 'look', ox: t.clientX, oy: t.clientY });
+        if (!left) { this._fire = true; this._firing = true; }
+      }
+    }, { passive: false });
+    this.el.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of Array.from(e.changedTouches)) {
+        const rec = this.touches.get(t.identifier); if (!rec) continue;
+        if (rec.type === 'move') {
+          const dx = t.clientX - rec.ox, dy = t.clientY - rec.oy;
+          const R = 52;
+          this.moveX = Math.max(-1, Math.min(1, dx / R));
+          this.moveY = Math.max(-1, Math.min(1, -dy / R));
+        } else {
+          this.lookDX += t.clientX - rec.ox; this.lookDY += t.clientY - rec.oy;
+          rec.ox = t.clientX; rec.oy = t.clientY;
+        }
+      }
+    }, { passive: false });
+    const end = (e: TouchEvent) => {
+      for (const t of Array.from(e.changedTouches)) {
+        const rec = this.touches.get(t.identifier);
+        if (rec?.type === 'move') { this.moveX = 0; this.moveY = 0; }
+        if (rec?.type === 'look') this._firing = false;
+        this.touches.delete(t.identifier);
+      }
+    };
+    this.el.addEventListener('touchend', end, { passive: false });
+    this.el.addEventListener('touchcancel', end, { passive: false });
+  }
+
+  // Mobile action buttons call these
+  pressJump() { this._jump = true; }
+  pressCrouch() { this._crouch = true; }
+}
