@@ -3,8 +3,8 @@ export const CONFIG = {
   player: {
     standHeight: 1.7,
     crouchHeight: 1.05,
-    walkSpeed: 5.4,
-    sprintMul: 1.65,
+    walkSpeed: 8.5,
+    sprintMul: 1.6,
     crouchMul: 0.55,
     jumpVelocity: 6.2,
     gravity: 18.0,

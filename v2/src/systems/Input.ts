@@ -64,7 +64,6 @@ export class Input {
       for (const t of Array.from(e.changedTouches)) {
         const left = t.clientX < half();
         this.touches.set(t.identifier, { type: left ? 'move' : 'look', ox: t.clientX, oy: t.clientY });
-        if (!left) { this._fire = true; this._firing = true; }
       }
     }, { passive: false });
     this.el.addEventListener('touchmove', (e) => {
@@ -73,7 +72,7 @@ export class Input {
         const rec = this.touches.get(t.identifier); if (!rec) continue;
         if (rec.type === 'move') {
           const dx = t.clientX - rec.ox, dy = t.clientY - rec.oy;
-          const R = 52;
+          const R = 42;
           this.moveX = Math.max(-1, Math.min(1, dx / R));
           this.moveY = Math.max(-1, Math.min(1, -dy / R));
         } else {
@@ -86,7 +85,6 @@ export class Input {
       for (const t of Array.from(e.changedTouches)) {
         const rec = this.touches.get(t.identifier);
         if (rec?.type === 'move') { this.moveX = 0; this.moveY = 0; }
-        if (rec?.type === 'look') this._firing = false;
         this.touches.delete(t.identifier);
       }
     };
@@ -97,4 +95,6 @@ export class Input {
   // Mobile action buttons call these
   pressJump() { this._jump = true; }
   pressCrouch() { this._crouch = true; }
+  startFire() { this._firing = true; this._fire = true; }
+  stopFire() { this._firing = false; }
 }

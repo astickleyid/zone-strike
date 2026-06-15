@@ -63,7 +63,11 @@ export class Game {
     const scene = this.ge.scene;
     const ray = new Ray(this.player.position.clone(), this.player.forward, 100);
     const pick = scene.pickWithRay(ray, (m: AbstractMesh) => m.name === 'bot' && m.isEnabled());
-    this.spawnTracer(this.player.position, pick?.hit && pick.pickedPoint ? pick.pickedPoint : this.player.position.add(this.player.forward.scale(60)));
+    const fwd = this.player.forward;
+    const right = new Vector3(fwd.z, 0, -fwd.x).normalize();
+    const muzzle = this.player.position.add(fwd.scale(1.4)).add(right.scale(0.18)).add(new Vector3(0, -0.22, 0));
+    const end = pick?.hit && pick.pickedPoint ? pick.pickedPoint : this.player.position.add(fwd.scale(80));
+    this.spawnTracer(muzzle, end);
     if (pick?.hit && pick.pickedMesh) {
       const bot: Bot | undefined = pick.pickedMesh.metadata?.bot;
       if (bot && bot.hit(30)) { this.kills++; this.updateHud(); bridge.happyTime(); }
@@ -87,5 +91,16 @@ export class Game {
     };
     bind('btn-jump', () => this.input.pressJump());
     bind('btn-crouch', () => this.input.pressCrouch());
+    // Fire button: hold to fire (full-auto), release to stop
+    const fire = document.getElementById('btn-fire');
+    if (fire) {
+      const down = (e: Event) => { e.preventDefault(); this.input.startFire(); };
+      const up = (e: Event) => { e.preventDefault(); this.input.stopFire(); };
+      fire.addEventListener('touchstart', down, { passive: false });
+      fire.addEventListener('touchend', up, { passive: false });
+      fire.addEventListener('touchcancel', up, { passive: false });
+      fire.addEventListener('mousedown', down);
+      fire.addEventListener('mouseup', up);
+    }
   }
 }
