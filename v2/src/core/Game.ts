@@ -7,6 +7,8 @@ import type { GameEngine } from './Engine';
 import { buildArena } from './Arena';
 import { Player } from './Player';
 import { spawnBots, Bot } from './Bots';
+import type { Target } from './Bots';
+import { loadSoldierContainer } from './Assets';
 import { Viewmodel } from './Viewmodel';
 import { Input } from '../systems/Input';
 import { bridge } from '../platform/PortalBridge';
@@ -30,9 +32,25 @@ export class Game {
     this.ge.setScene(arena.scene);
     this.player = new Player(arena.scene, arena.spawns[0]);
     this.vm = new Viewmodel(arena.scene, this.player.cam);
-    this.bots = spawnBots(arena.scene, this.isMobile() ? CONFIG.match.botCountMobile : CONFIG.match.botCountDesktop);
     this.input = new Input(this.ge.canvas);
     this.wireButtons();
+
+    // Player feedback hooks
+    this.player.onDamage = () => this.flashDamage();
+    this.player.onDeath = () => this.handleDeath();
+
+    const player = this.player;
+    const target: Target = {
+      get position() { return player.position; },
+      get alive() { return player.alive; },
+      damage: (n: number) => player.damage(n),
+    };
+
+    loadSoldierContainer(arena.scene)
+      .then((container) => {
+        this.bots = spawnBots(arena.scene, this.isMobile() ? CONFIG.match.botCountMobile : CONFIG.match.botCountDesktop, container);
+      })
+      .catch((e) => console.error('[zonestrike] soldier load failed:', e));
 
     let last = performance.now();
     let errored = false;
@@ -43,10 +61,11 @@ export class Game {
         const dt = Math.min((now - last) / 1000, 0.05); last = now;
         this.firedThisFrame = false;
         this.player.update(dt, this.input);
-        for (const b of this.bots) b.update(dt);
-        if (this.input.firing) this.tryShoot(now);
+        for (const b of this.bots) b.update(dt, target);
+        if (this.input.firing && this.player.alive) this.tryShoot(now);
         const moving = Math.abs(this.input.moveX) > 0.1 || Math.abs(this.input.moveY) > 0.1;
         this.vm.update(dt, moving, this.player.ads);
+        this.updateHealthHud();
       } catch (e) {
         errored = true;
         const box = document.getElementById('err');
@@ -85,8 +104,45 @@ export class Game {
 
     if (pick?.hit && pick.pickedMesh) {
       const bot: Bot | undefined = pick.pickedMesh.metadata?.bot;
-      if (bot && bot.hit(30)) { this.kills++; this.updateHud(); bridge.happyTime(); }
+      if (bot) {
+        this.hitmarker();
+        if (bot.hit(30)) { this.kills++; this.updateHud(); bridge.happyTime(); }
+      }
     }
+  }
+
+  // ── Feedback + HUD ──
+  private hitmarker() {
+    const hm = document.getElementById('hitmarker');
+    if (!hm) return;
+    hm.style.opacity = '1';
+    setTimeout(() => { hm.style.opacity = '0'; }, 90);
+  }
+
+  private flashDamage() {
+    const v = document.getElementById('dmg-vignette');
+    if (!v) return;
+    v.style.opacity = '1';
+    setTimeout(() => { v.style.opacity = '0'; }, 140);
+  }
+
+  private updateHealthHud() {
+    const fill = document.getElementById('hp-fill');
+    const num = document.getElementById('hp-num');
+    const pct = Math.max(0, Math.round((this.player.hp / this.player.maxHp) * 100));
+    if (fill) { fill.style.width = pct + '%'; fill.style.background = pct > 50 ? '#7CFF6B' : pct > 25 ? '#FFD23F' : '#FF5A4A'; }
+    if (num) num.textContent = String(pct);
+  }
+
+  private handleDeath() {
+    const o = document.getElementById('death-overlay');
+    if (o) o.style.display = 'flex';
+    bridge.showInterstitial();
+    setTimeout(() => {
+      this.player.respawn();
+      const o2 = document.getElementById('death-overlay');
+      if (o2) o2.style.display = 'none';
+    }, 2800);
   }
 
   private spawnTracer(from: Vector3, to: Vector3) {

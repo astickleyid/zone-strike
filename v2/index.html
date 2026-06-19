@@ -17,6 +17,18 @@
     #crosshair::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
     #stats{position:absolute;top:14px;left:16px;color:#f2ede4;font-size:13px;letter-spacing:2px;line-height:1.6;text-shadow:0 1px 3px #000}
     #stats b{color:#e8622a}
+    #hitmarker{position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%) rotate(45deg);opacity:0;transition:opacity .05s}
+    #hitmarker::before,#hitmarker::after{content:'';position:absolute;background:#fff}
+    #hitmarker::before{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%)}
+    #hitmarker::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
+    #healthbar{position:absolute;left:16px;bottom:18px;display:flex;align-items:center;gap:8px}
+    #hp-track{width:160px;height:12px;background:rgba(10,8,6,0.6);border:1px solid rgba(242,237,228,0.3);border-radius:2px;overflow:hidden}
+    #hp-fill{height:100%;width:100%;background:#7CFF6B;transition:width .15s,background .2s}
+    #hp-num{color:#f2ede4;font:bold 13px monospace;text-shadow:0 1px 2px #000;min-width:28px}
+    #dmg-vignette{position:fixed;inset:0;pointer-events:none;z-index:11;opacity:0;transition:opacity .12s;box-shadow:inset 0 0 140px 40px rgba(200,20,10,0.65)}
+    #death-overlay{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(40,5,2,0.5);backdrop-filter:blur(2px)}
+    #death-text{color:#ff4a3a;font-size:34px;font-weight:bold;letter-spacing:6px;text-shadow:0 2px 8px #000}
+    #death-sub{color:#f2ede4;font-size:13px;letter-spacing:3px;margin-top:10px;opacity:0.85}
     .mbtn{position:absolute;pointer-events:all;width:60px;height:60px;border-radius:50%;border:1.5px solid rgba(242,237,228,0.35);background:rgba(20,18,14,0.5);color:#f2ede4;display:flex;align-items:center;justify-content:center;font-size:11px;letter-spacing:1px;font-weight:bold;-webkit-tap-highlight-color:transparent}
     .mbtn:active{background:rgba(232,98,42,0.3);border-color:#e8622a}
     #btn-jump{right:120px;bottom:108px}
@@ -45,7 +57,9 @@
   <canvas id="game"></canvas>
   <div id="hud">
     <div id="crosshair"></div>
+    <div id="hitmarker"></div>
     <div id="stats">KILLS <b id="hud-kills">0</b></div>
+    <div id="healthbar"><div id="hp-track"><div id="hp-fill"></div></div><div id="hp-num">100</div></div>
     <button class="mbtn" id="btn-jump">JUMP</button>
     <button class="mbtn" id="btn-crouch">CRCH</button>
     <button class="mbtn" id="btn-fire">FIRE</button>
@@ -53,6 +67,8 @@
     <button class="mbtn" id="btn-sprint">RUN</button>
     <div id="hint-d">CLICK TO LOCK · WASD MOVE · MOUSE LOOK · SPACE JUMP · C CROUCH · SHIFT SPRINT · CLICK FIRE</div>
   </div>
+  <div id="dmg-vignette"></div>
+  <div id="death-overlay"><div id="death-text">ELIMINATED</div><div id="death-sub">Respawning…</div></div>
   <div id="boot-loader">LOADING…</div>
   <script type="module" src="/src/main.ts"></script>
 </body>

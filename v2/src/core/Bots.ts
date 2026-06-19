@@ -1,82 +1,75 @@
-import { Vector3, Color3 } from '@babylonjs/core/Maths/math';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import { Ray } from '@babylonjs/core/Culling/ray';
 import type { Scene } from '@babylonjs/core/scene';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
+import type { AssetContainer } from '@babylonjs/core/assetContainer';
+import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup';
 
-/** Enemy soldier: invisible capsule hitbox (named 'bot' for hitscan) with a
- *  procedural humanoid parented to it. Limbs swing while walking; tips over on death. */
+const MODEL_SCALE = 1.0;
+const FEET_OFFSET = -0.9;
+const MODEL_FORWARD = Math.PI;
+const SIGHT = 30;
+const FIRE_RANGE = 26;
+const FIRE_CD = 0.9;
+
+/** What a bot can shoot at (the player). */
+export interface Target { position: Vector3; alive: boolean; damage(n: number): void; }
+
+/** Enemy soldier: rigged Vanguard model under a pivot we control, on a collidable hitbox. */
 export class Bot {
-  hitbox: Mesh;          // pickable collision/aim target named 'bot'
-  root: TransformNode;   // visual root (feet at ground)
+  hitbox: Mesh;
+  private pivot: TransformNode;   // we rotate THIS (model root has a baked quaternion)
+  private walk?: AnimationGroup;
   hp = 100;
   alive = true;
-  private legL!: TransformNode; private legR!: TransformNode;
-  private armL!: TransformNode; private armR!: TransformNode;
-  private phase = Math.random() * 6.28;
   private target: Vector3;
   private speed: number;
   private dyingT = 0;
+  private facing = 0;
+  private stuckT = 0;
+  private scene: Scene;
+  private fireT = Math.random() * FIRE_CD;
 
-  constructor(scene: Scene, pos: Vector3) {
+  constructor(scene: Scene, pos: Vector3, container: AssetContainer) {
+    this.scene = scene;
     const hb = MeshBuilder.CreateCapsule('bot', { radius: 0.5, height: 1.8 }, scene);
     hb.position.copyFrom(pos);
-    hb.isVisible = false; hb.isPickable = true; hb.checkCollisions = false;
+    hb.isVisible = false; hb.isPickable = true;
+    hb.checkCollisions = true;
+    hb.ellipsoid = new Vector3(0.5, 0.9, 0.5);
     (hb.metadata ||= {}).bot = this;
     this.hitbox = hb;
 
-    const root = new TransformNode('botRoot', scene);
-    root.parent = hb; root.position.set(0, -0.9, 0); // feet at hitbox bottom
-    this.root = root;
-    this.build(scene, root);
+    // Pivot we control; the model's __root__ keeps its handedness quaternion underneath
+    const pivot = new TransformNode('botPivot', scene);
+    this.pivot = pivot;
+    const inst = container.instantiateModelsToScene((n) => n, false);
+    const root = inst.rootNodes[0] as TransformNode;
+    root.parent = pivot;
+    pivot.scaling.setAll(MODEL_SCALE);
+    for (const m of root.getChildMeshes()) m.isPickable = false;
+    for (const g of inst.animationGroups) {
+      g.stop();
+      if (/walk/i.test(g.name)) this.walk = g;
+    }
+    this.walk?.play(true);
 
     this.target = this.pickTarget();
-    this.speed = 1.8 + Math.random() * 1.6;
+    this.speed = 2.0 + Math.random() * 1.8;
+    this.sync();
   }
 
-  private mat(scene: Scene, r: number, g: number, b: number) {
-    const m = new StandardMaterial('bm', scene);
-    m.diffuseColor = new Color3(r, g, b); m.specularColor = new Color3(0.05, 0.05, 0.05);
-    return m;
+  private pickTarget(): Vector3 { return new Vector3((Math.random() - 0.5) * 42, 0.9, (Math.random() - 0.5) * 42); }
+
+  private sync() {
+    const p = this.hitbox.position;
+    this.pivot.position.set(p.x, p.y + FEET_OFFSET, p.z);
+    this.pivot.rotation.set(this.alive ? 0 : Math.min(Math.PI / 2, this.dyingT * 6), this.facing + MODEL_FORWARD, 0);
   }
-
-  private build(scene: Scene, root: TransformNode) {
-    const olive = this.mat(scene, 0.30, 0.32, 0.18);
-    const vestC = this.mat(scene, 0.17, 0.19, 0.12);
-    const skin = this.mat(scene, 0.66, 0.50, 0.38);
-    const helmet = this.mat(scene, 0.20, 0.22, 0.15);
-    const boot = this.mat(scene, 0.10, 0.10, 0.09);
-
-    const box = (n: string, w: number, h: number, d: number, m: StandardMaterial, parent: TransformNode) => {
-      const b = MeshBuilder.CreateBox(n, { width: w, height: h, depth: d }, scene);
-      b.material = m; b.isPickable = false; b.parent = parent; return b;
-    };
-
-    // Torso + vest
-    const torso = box('torso', 0.5, 0.62, 0.3, olive, root); torso.position.set(0, 1.16, 0);
-    const vest = box('vest', 0.54, 0.5, 0.34, vestC, root); vest.position.set(0, 1.18, 0);
-    // Head + helmet
-    const head = MeshBuilder.CreateSphere('head', { diameter: 0.26, segments: 8 }, scene);
-    head.material = skin; head.isPickable = false; head.parent = root; head.position.set(0, 1.62, 0);
-    const hel = box('helmet', 0.30, 0.16, 0.30, helmet, root); hel.position.set(0, 1.70, 0);
-    // Legs (pivot at hip)
-    const mkLimb = (name: string, px: number, py: number, len: number, w: number, m: StandardMaterial, bootM?: StandardMaterial) => {
-      const pivot = new TransformNode(name, scene); pivot.parent = root; pivot.position.set(px, py, 0);
-      const seg = box(name + 'seg', w, len, w, m, pivot); seg.position.set(0, -len / 2, 0);
-      if (bootM) { const bt = box(name + 'boot', w + 0.02, 0.12, w + 0.05, bootM, pivot); bt.position.set(0, -len, 0.02); }
-      return pivot;
-    };
-    this.legL = mkLimb('legL', -0.14, 0.85, 0.8, 0.2, olive, boot);
-    this.legR = mkLimb('legR', 0.14, 0.85, 0.8, 0.2, olive, boot);
-    this.armL = mkLimb('armL', -0.34, 1.46, 0.6, 0.15, olive);
-    this.armR = mkLimb('armR', 0.34, 1.46, 0.6, 0.15, olive);
-    // Simple rifle in right hand
-    const gun = box('botgun', 0.08, 0.08, 0.5, this.mat(scene, 0.12, 0.12, 0.12), this.armR);
-    gun.position.set(0.0, -0.5, 0.18); gun.rotation.x = 0.2;
-  }
-
-  private pickTarget(): Vector3 { return new Vector3((Math.random() - 0.5) * 44, 0.9, (Math.random() - 0.5) * 44); }
 
   hit(dmg: number): boolean {
     if (!this.alive) return false;
@@ -85,50 +78,105 @@ export class Bot {
     return false;
   }
 
-  private die() {
-    this.alive = false; this.dyingT = 0;
-    setTimeout(() => this.respawn(), 3200);
-  }
+  private die() { this.alive = false; this.dyingT = 0; this.walk?.stop(); setTimeout(() => this.respawn(), 3500); }
 
   private respawn() {
-    this.hp = 100; this.alive = true; this.dyingT = 0;
-    this.root.rotation.set(0, 0, 0);
-    this.hitbox.position.set((Math.random() - 0.5) * 44, 0.9, (Math.random() - 0.5) * 44);
+    this.hp = 100; this.alive = true; this.dyingT = 0; this.stuckT = 0;
+    this.hitbox.position.set((Math.random() - 0.5) * 40, 0.9, (Math.random() - 0.5) * 40);
     this.target = this.pickTarget();
-    this.hitbox.setEnabled(true);
+    this.hitbox.setEnabled(true); this.pivot.setEnabled(true);
+    this.walk?.play(true);
+    this.sync();
   }
 
-  update(dt: number) {
+  private canSee(target: Target): boolean {
+    const from = this.hitbox.position.add(new Vector3(0, 0.6, 0));
+    const to = target.position;
+    const dir = to.subtract(from); const dist = dir.length();
+    if (dist > SIGHT) return false;
+    dir.normalize();
+    const ray = new Ray(from, dir, dist - 0.6);
+    const hit = this.scene.pickWithRay(ray, (m: AbstractMesh) =>
+      (m.name === 'wall' || m.name === 'cover') && m.isPickable !== false);
+    return !(hit?.hit);
+  }
+
+  private shoot(target: Target) {
+    // accuracy falls off with distance
+    const dist = Vector3.Distance(this.hitbox.position, target.position);
+    const acc = Math.max(0.18, 0.7 - dist / 60);
+    const muzzle = this.hitbox.position.add(new Vector3(0, 0.6, 0));
+    this.tracer(muzzle, target.position);
+    if (Math.random() < acc) target.damage(7 + Math.random() * 7);
+  }
+
+  private tracer(from: Vector3, to: Vector3) {
+    const line = MeshBuilder.CreateLines('etracer', { points: [from, to] }, this.scene);
+    line.color = new Color3(1, 0.3, 0.2); line.isPickable = false;
+    setTimeout(() => line.dispose(), 45);
+  }
+
+  update(dt: number, target: Target) {
     if (!this.alive) {
-      // fall over, then hide
       this.dyingT += dt;
-      this.root.rotation.x = Math.min(Math.PI / 2, this.dyingT * 6);
-      if (this.dyingT > 0.6) this.hitbox.setEnabled(false);
+      if (this.dyingT > 0.7) { this.hitbox.setEnabled(false); this.pivot.setEnabled(false); }
+      this.sync();
       return;
     }
+
+    // ── Engage the player if visible ──
+    const engaged = target.alive && this.canSee(target);
+    if (engaged) {
+      const to = target.position.subtract(this.hitbox.position); to.y = 0;
+      const dist = to.length();
+      this.facing = Math.atan2(to.x, to.z);
+      // strafe-advance: close distance if far, hold if in range
+      if (dist > FIRE_RANGE) {
+        to.normalize();
+        const before = this.hitbox.position.clone();
+        this.hitbox.moveWithCollisions(to.scale(this.speed * dt));
+        this.hitbox.position.y = 0.9;
+        if (Vector3.Distance(before, this.hitbox.position) < this.speed * dt * 0.4) { this.strafeAround(target, dt); }
+      } else {
+        this.strafeAround(target, dt);
+      }
+      this.fireT -= dt;
+      if (this.fireT <= 0 && dist < FIRE_RANGE) { this.shoot(target); this.fireT = FIRE_CD * (0.8 + Math.random() * 0.5); }
+      this.sync();
+      return;
+    }
+
+    // ── Wander when player not seen ──
     const to = this.target.subtract(this.hitbox.position); to.y = 0;
     const dist = to.length();
-    if (dist < 1) { this.target = this.pickTarget(); }
-    else {
-      to.normalize();
-      this.hitbox.position.addInPlace(to.scale(this.speed * dt));
-      this.hitbox.position.y = 0.9;
-      // face movement direction
-      this.root.rotation.y = Math.atan2(to.x, to.z);
-      // walk cycle
-      this.phase += dt * this.speed * 2.4;
-      const s = Math.sin(this.phase) * 0.5;
-      this.legL.rotation.x = s; this.legR.rotation.x = -s;
-      this.armL.rotation.x = -s * 0.8; this.armR.rotation.x = s * 0.8;
-    }
+    if (dist < 1.2) { this.target = this.pickTarget(); this.sync(); return; }
+    to.normalize();
+    this.facing = Math.atan2(to.x, to.z);
+    const before = this.hitbox.position.clone();
+    this.hitbox.moveWithCollisions(to.scale(this.speed * dt));
+    this.hitbox.position.y = 0.9;
+    const moved = Vector3.Distance(before, this.hitbox.position);
+    if (moved < this.speed * dt * 0.4) { this.stuckT += dt; if (this.stuckT > 0.3) { this.target = this.pickTarget(); this.stuckT = 0; } }
+    else this.stuckT = 0;
+    this.sync();
+  }
+
+  private strafeAround(target: Target, dt: number) {
+    // sidestep relative to the player for a bit of life
+    const to = target.position.subtract(this.hitbox.position); to.y = 0; to.normalize();
+    const side = new Vector3(to.z, 0, -to.x).scale((Math.sin(Date.now() * 0.001 + this.fireT) > 0 ? 1 : -1));
+    const before = this.hitbox.position.clone();
+    this.hitbox.moveWithCollisions(side.scale(this.speed * 0.5 * dt));
+    this.hitbox.position.y = 0.9;
+    if (Vector3.Distance(before, this.hitbox.position) < 0.001) { /* blocked, ignore */ }
   }
 }
 
-export function spawnBots(scene: Scene, count: number): Bot[] {
+export function spawnBots(scene: Scene, count: number, container: AssetContainer): Bot[] {
   const bots: Bot[] = [];
   for (let i = 0; i < count; i++) {
     const ang = (i / count) * Math.PI * 2;
-    bots.push(new Bot(scene, new Vector3(Math.cos(ang) * 18, 0.9, Math.sin(ang) * 18)));
+    bots.push(new Bot(scene, new Vector3(Math.cos(ang) * 16, 0.9, Math.sin(ang) * 16), container));
   }
   return bots;
 }
