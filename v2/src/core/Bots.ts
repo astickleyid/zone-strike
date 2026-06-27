@@ -8,6 +8,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { AssetContainer } from '@babylonjs/core/assetContainer';
 import type { AnimationGroup } from '@babylonjs/core/Animations/animationGroup';
+import { sfx } from '../systems/Audio';
 
 const MODEL_SCALE = 1.0;
 const FEET_OFFSET = -0.9;
@@ -106,7 +107,7 @@ export class Bot {
     const dist = Vector3.Distance(this.hitbox.position, target.position);
     const acc = Math.max(0.18, 0.7 - dist / 60);
     const muzzle = this.hitbox.position.add(new Vector3(0, 0.6, 0));
-    this.tracer(muzzle, target.position);
+    this.tracer(muzzle, target.position); sfx.enemyShoot();
     if (Math.random() < acc) target.damage(7 + Math.random() * 7);
   }
 

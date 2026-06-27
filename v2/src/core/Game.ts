@@ -11,6 +11,8 @@ import type { Target } from './Bots';
 import { loadSoldierContainer } from './Assets';
 import { Viewmodel } from './Viewmodel';
 import { Input } from '../systems/Input';
+import { ZoneManager } from '../systems/Zones';
+import { sfx } from '../systems/Audio';
 import { bridge } from '../platform/PortalBridge';
 import { CONFIG } from '../config';
 
@@ -23,6 +25,10 @@ export class Game {
   private lastShot = 0;
   private vm!: Viewmodel;
   private firedThisFrame = false;
+  private zones!: ZoneManager;
+  private matchTime: number = CONFIG.match.durationSec;
+  private running = true;
+  private readonly SCORE_TARGET = 750;
   private hud = { kills: document.getElementById('hud-kills'), ammo: document.getElementById('hud-ammo') };
 
   constructor(ge: GameEngine) { this.ge = ge; }
@@ -34,9 +40,12 @@ export class Game {
     this.vm = new Viewmodel(arena.scene, this.player.cam);
     this.input = new Input(this.ge.canvas);
     this.wireButtons();
+    sfx.init();
+    this.zones = new ZoneManager(arena.zones);
+    this.zones.onCapture = (owner) => { if (owner === 'player') sfx.capture(); };
 
     // Player feedback hooks
-    this.player.onDamage = () => this.flashDamage();
+    this.player.onDamage = () => { this.flashDamage(); sfx.hurt(); };
     this.player.onDeath = () => this.handleDeath();
 
     const player = this.player;
@@ -66,6 +75,19 @@ export class Game {
         const moving = Math.abs(this.input.moveX) > 0.1 || Math.abs(this.input.moveY) > 0.1;
         this.vm.update(dt, moving, this.player.ads);
         this.updateHealthHud();
+
+        if (this.running) {
+          // Zone capture + scoring
+          const botPos = this.bots.filter((b) => b.alive).map((b) => b.hitbox.position);
+          this.zones.update(dt, this.player.position, this.player.alive, botPos);
+          // Match timer
+          this.matchTime = Math.max(0, this.matchTime - dt);
+          this.updateMatchHud();
+          // Win/lose
+          if (this.zones.playerScore >= this.SCORE_TARGET) this.endMatch(true);
+          else if (this.zones.enemyScore >= this.SCORE_TARGET) this.endMatch(false);
+          else if (this.matchTime <= 0) this.endMatch(this.zones.playerScore >= this.zones.enemyScore);
+        }
       } catch (e) {
         errored = true;
         const box = document.getElementById('err');
@@ -100,13 +122,13 @@ export class Game {
     const right = new Vector3(dir.z, 0, -dir.x).normalize();
     const muzzle = origin.add(dir.scale(1.2)).add(right.scale(0.16)).add(new Vector3(0, -0.2, 0));
     this.spawnTracer(muzzle, end);
-    if (!this.firedThisFrame) { this.vm.fire(); this.firedThisFrame = true; }
+    if (!this.firedThisFrame) { this.vm.fire(); sfx.shoot(); this.firedThisFrame = true; }
 
     if (pick?.hit && pick.pickedMesh) {
       const bot: Bot | undefined = pick.pickedMesh.metadata?.bot;
       if (bot) {
-        this.hitmarker();
-        if (bot.hit(30)) { this.kills++; this.updateHud(); bridge.happyTime(); }
+        this.hitmarker(); sfx.hit();
+        if (bot.hit(30)) { this.kills++; this.updateHud(); sfx.kill(); bridge.happyTime(); }
       }
     }
   }
@@ -132,6 +154,43 @@ export class Game {
     const pct = Math.max(0, Math.round((this.player.hp / this.player.maxHp) * 100));
     if (fill) { fill.style.width = pct + '%'; fill.style.background = pct > 50 ? '#7CFF6B' : pct > 25 ? '#FFD23F' : '#FF5A4A'; }
     if (num) num.textContent = String(pct);
+  }
+
+  private updateMatchHud() {
+    const ps = document.getElementById('score-you');
+    const es = document.getElementById('score-enemy');
+    const tm = document.getElementById('match-timer');
+    if (ps) ps.textContent = String(Math.floor(this.zones.playerScore));
+    if (es) es.textContent = String(Math.floor(this.zones.enemyScore));
+    if (tm) { const s = Math.ceil(this.matchTime); tm.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+    for (let i = 0; i < this.zones.zones.length; i++) {
+      const pip = document.getElementById('zpip-' + i);
+      if (pip) { const o = this.zones.ownerOf(i); pip.style.background = o === 'player' ? '#52d452' : o === 'enemy' ? '#e6402f' : '#888'; }
+    }
+  }
+
+  private endMatch(won: boolean) {
+    if (!this.running) return;
+    this.running = false;
+    bridge.gameplayStop();
+    won ? sfx.win() : sfx.lose();
+    const o = document.getElementById('result-overlay');
+    const t = document.getElementById('result-text');
+    const s = document.getElementById('result-sub');
+    if (t) { t.textContent = won ? 'VICTORY' : 'DEFEAT'; t.style.color = won ? '#7CFF6B' : '#ff4a3a'; }
+    if (s) s.textContent = `YOU ${Math.floor(this.zones.playerScore)}  ·  ENEMY ${Math.floor(this.zones.enemyScore)}  ·  ${this.kills} KILLS`;
+    if (o) o.style.display = 'flex';
+    bridge.showInterstitial();
+  }
+
+  private restart() {
+    this.zones.reset();
+    this.matchTime = CONFIG.match.durationSec;
+    this.kills = 0; this.updateHud();
+    this.player.respawn();
+    this.running = true;
+    const o = document.getElementById('result-overlay'); if (o) o.style.display = 'none';
+    bridge.gameplayStart();
   }
 
   private handleDeath() {
@@ -193,6 +252,12 @@ export class Game {
       const t = (e: Event) => { e.preventDefault(); const on = this.input.toggleSprint(); sp.classList.toggle('on', on); };
       sp.addEventListener('touchstart', t, { passive: false });
       sp.addEventListener('mousedown', t);
+    }
+    const again = document.getElementById('btn-again');
+    if (again) {
+      const r = (e: Event) => { e.preventDefault(); this.restart(); };
+      again.addEventListener('touchstart', r, { passive: false });
+      again.addEventListener('click', r);
     }
   }
 }

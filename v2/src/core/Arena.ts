@@ -13,7 +13,7 @@ import { CONFIG } from '../config';
 export interface ArenaData {
   scene: Scene;
   spawns: Vector3[];
-  zones: { name: string; pos: Vector3; radius: number }[];
+  zones: { name: string; pos: Vector3; radius: number; disc: import('@babylonjs/core/Meshes/mesh').Mesh; mat: StandardMaterial }[];
 }
 
 /** Builds the military-compound arena with collision geometry + cover. */
@@ -70,19 +70,19 @@ export function buildArena(ge: GameEngine): ArenaData {
   ];
   for (const [x, z, w, h, d, m] of layout) cover(x, z, w, h, d, m);
 
-  const zones = [
+  const zoneDefs = [
     { name: 'ALPHA', pos: new Vector3(16, 0, 16), radius: 5 },
     { name: 'BRAVO', pos: new Vector3(-16, 0, -16), radius: 5 },
     { name: 'CHARLIE', pos: new Vector3(0, 0, 0), radius: 5 },
   ];
-  // Visual zone rings
-  for (const z of zones) {
-    const disc = MeshBuilder.CreateDisc('zone', { radius: z.radius, tessellation: 36 }, scene);
-    disc.rotation.x = Math.PI / 2; disc.position.set(z.pos.x, 0.02, z.pos.z);
+  const zones = zoneDefs.map((z) => {
+    const disc = MeshBuilder.CreateDisc('zone', { radius: z.radius, tessellation: 40 }, scene);
+    disc.rotation.x = Math.PI / 2; disc.position.set(z.pos.x, 0.03, z.pos.z);
     const zm = new StandardMaterial('zm', scene);
-    zm.diffuseColor = new Color3(0.9, 0.5, 0.1); zm.alpha = 0.18; zm.emissiveColor = new Color3(0.5, 0.25, 0.05);
-    disc.material = zm; disc.isPickable = false;
-  }
+    zm.diffuseColor = new Color3(0.6, 0.6, 0.6); zm.alpha = 0.2; zm.emissiveColor = new Color3(0.3, 0.3, 0.3);
+    zm.disableLighting = true; disc.material = zm; disc.isPickable = false;
+    return { name: z.name, pos: z.pos, radius: z.radius, disc, mat: zm };
+  });
 
   const S = CONFIG.player.standHeight;
   const spawns = [new Vector3(20, S, 20), new Vector3(-20, S, -20), new Vector3(20, S, -20), new Vector3(-20, S, 20)];
