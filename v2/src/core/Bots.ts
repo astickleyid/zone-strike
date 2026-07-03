@@ -16,11 +16,15 @@ const MODEL_FORWARD = Math.PI;
 const SIGHT = 30;
 const FIRE_RANGE = 26;
 const FIRE_CD = 0.9;
+const GRACE_SEC = 6;      // no engagement at match start
 
 /** What a bot can shoot at (the player). */
 export interface Target { position: Vector3; alive: boolean; damage(n: number): void; }
 
 /** Enemy soldier: rigged Vanguard model under a pivot we control, on a collidable hitbox. */
+let matchStart = Date.now();
+export function resetGrace() { matchStart = Date.now(); }
+
 export class Bot {
   hitbox: Mesh;
   private pivot: TransformNode;   // we rotate THIS (model root has a baked quaternion)
@@ -125,8 +129,9 @@ export class Bot {
       return;
     }
 
-    // ── Engage the player if visible ──
-    const engaged = target.alive && this.canSee(target);
+    // ── Engage the player if visible (after opening grace period) ──
+    const inGrace = (Date.now() - matchStart) / 1000 < GRACE_SEC;
+    const engaged = !inGrace && target.alive && this.canSee(target);
     if (engaged) {
       const to = target.position.subtract(this.hitbox.position); to.y = 0;
       const dist = to.length();
@@ -173,11 +178,13 @@ export class Bot {
   }
 }
 
-export function spawnBots(scene: Scene, count: number, container: AssetContainer): Bot[] {
+export function spawnBots(scene: Scene, count: number, container: AssetContainer, awayFrom?: Vector3): Bot[] {
   const bots: Bot[] = [];
+  // Spawn on the semicircle opposite the player so the opening seconds have distance
+  const base = awayFrom ? Math.atan2(-awayFrom.x, -awayFrom.z) : 0;
   for (let i = 0; i < count; i++) {
-    const ang = (i / count) * Math.PI * 2;
-    bots.push(new Bot(scene, new Vector3(Math.cos(ang) * 16, 0.9, Math.sin(ang) * 16), container));
+    const ang = base + (i / Math.max(1, count - 1) - 0.5) * (Math.PI * 0.9);
+    bots.push(new Bot(scene, new Vector3(Math.sin(ang) * 19, 0.9, Math.cos(ang) * 19), container));
   }
   return bots;
 }

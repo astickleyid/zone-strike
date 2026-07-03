@@ -6,7 +6,7 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { GameEngine } from './Engine';
 import { buildArena } from './Arena';
 import { Player } from './Player';
-import { spawnBots, Bot } from './Bots';
+import { spawnBots, Bot, resetGrace } from './Bots';
 import type { Target } from './Bots';
 import { loadSoldierContainer } from './Assets';
 import { Viewmodel } from './Viewmodel';
@@ -57,7 +57,8 @@ export class Game {
 
     loadSoldierContainer(arena.scene)
       .then((container) => {
-        this.bots = spawnBots(arena.scene, this.isMobile() ? CONFIG.match.botCountMobile : CONFIG.match.botCountDesktop, container);
+        resetGrace();
+        this.bots = spawnBots(arena.scene, this.isMobile() ? CONFIG.match.botCountMobile : CONFIG.match.botCountDesktop, container, arena.spawns[0]);
       })
       .catch((e) => console.error('[zonestrike] soldier load failed:', e));
 
@@ -111,13 +112,36 @@ export class Game {
     this.lastShot = now;
     const scene = this.ge.scene;
     const cam = this.player.cam;
-    cam.computeWorldMatrix();                       // ensure matrix is current
+    cam.computeWorldMatrix();
     const origin = cam.globalPosition.clone();
-    const dir = Vector3.TransformNormal(new Vector3(0, 0, 1), cam.getWorldMatrix()).normalize(); // world forward
+    let dir = Vector3.TransformNormal(new Vector3(0, 0, 1), cam.getWorldMatrix()).normalize();
 
-    const ray = new Ray(origin, dir, 120);
+    const RANGE = 400; // effectively map-wide hitscan
+
+    // ── Aim assist (proven mobile-FPS pattern): if the exact ray would miss,
+    //    snap to the closest living bot within a small angular cone, if unobstructed.
+    const ASSIST_ANGLE = this.player.ads ? 0.035 : 0.06; // radians (~2° / ~3.4°)
+    const direct = scene.pickWithRay(new Ray(origin, dir, RANGE), (m: AbstractMesh) => m.name === 'bot' && m.isEnabled());
+    if (!direct?.hit) {
+      let best: { d: Vector3; ang: number } | null = null;
+      for (const b of this.bots) {
+        if (!b.alive) continue;
+        const aim = b.hitbox.position.add(new Vector3(0, 0.25, 0)).subtract(origin); // chest height
+        const dist = aim.length(); if (dist > RANGE) continue;
+        aim.normalize();
+        const ang = Math.acos(Math.min(1, Vector3.Dot(dir, aim)));
+        if (ang < ASSIST_ANGLE && (!best || ang < best.ang)) best = { d: aim, ang };
+      }
+      if (best) {
+        // only snap if nothing blocks the assisted shot
+        const clear = scene.pickWithRay(new Ray(origin, best.d, RANGE), (m: AbstractMesh) => (m.name === 'wall' || m.name === 'cover') && m.isPickable !== false);
+        if (!clear?.hit) dir = best.d;
+      }
+    }
+
+    const ray = new Ray(origin, dir, RANGE);
     const pick = scene.pickWithRay(ray, (m: AbstractMesh) => m.name === 'bot' && m.isEnabled());
-    const end = pick?.hit && pick.pickedPoint ? pick.pickedPoint : origin.add(dir.scale(80));
+    const end = pick?.hit && pick.pickedPoint ? pick.pickedPoint : origin.add(dir.scale(120));
 
     const right = new Vector3(dir.z, 0, -dir.x).normalize();
     const muzzle = origin.add(dir.scale(1.2)).add(right.scale(0.16)).add(new Vector3(0, -0.2, 0));
@@ -184,6 +208,7 @@ export class Game {
   }
 
   private restart() {
+    resetGrace();
     this.zones.reset();
     this.matchTime = CONFIG.match.durationSec;
     this.kills = 0; this.updateHud();
