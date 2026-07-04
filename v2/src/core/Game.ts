@@ -6,7 +6,7 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import type { GameEngine } from './Engine';
 import { buildArena } from './Arena';
 import { Player } from './Player';
-import { spawnBots, Bot, resetGrace } from './Bots';
+import { spawnBots, Bot, resetGrace, graceRemaining } from './Bots';
 import type { Target } from './Bots';
 import { loadSoldierContainer } from './Assets';
 import { Viewmodel } from './Viewmodel';
@@ -84,6 +84,13 @@ export class Game {
           // Match timer
           this.matchTime = Math.max(0, this.matchTime - dt);
           this.updateMatchHud();
+          // Spawn-grace countdown indicator
+          const g = graceRemaining();
+          const ge = document.getElementById('grace');
+          if (ge) {
+            if (g > 0 && this.bots.length) { ge.style.display = 'block'; ge.textContent = `ENEMIES INCOMING — ${Math.ceil(g)}`; }
+            else ge.style.display = 'none';
+          }
           // Win/lose
           if (this.zones.playerScore >= this.SCORE_TARGET) this.endMatch(true);
           else if (this.zones.enemyScore >= this.SCORE_TARGET) this.endMatch(false);

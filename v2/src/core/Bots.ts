@@ -16,7 +16,7 @@ const MODEL_FORWARD = Math.PI;
 const SIGHT = 30;
 const FIRE_RANGE = 26;
 const FIRE_CD = 0.9;
-const GRACE_SEC = 6;      // no engagement at match start
+const GRACE_SEC = 12;      // no engagement at match start
 
 /** What a bot can shoot at (the player). */
 export interface Target { position: Vector3; alive: boolean; damage(n: number): void; }
@@ -24,6 +24,7 @@ export interface Target { position: Vector3; alive: boolean; damage(n: number): 
 /** Enemy soldier: rigged Vanguard model under a pivot we control, on a collidable hitbox. */
 let matchStart = Date.now();
 export function resetGrace() { matchStart = Date.now(); }
+export function graceRemaining(): number { return Math.max(0, GRACE_SEC - (Date.now() - matchStart) / 1000); }
 
 export class Bot {
   hitbox: Mesh;

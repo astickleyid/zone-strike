@@ -15,13 +15,16 @@ export class Input {
 
   private keys: Record<string, boolean> = {};
   private touches = new Map<number, { type: 'move' | 'look'; ox: number; oy: number }>();
-  private isMobile: boolean;
+  readonly isMobile: boolean;
   private el: HTMLElement;
 
   constructor(el: HTMLElement) {
     this.el = el;
-    this.isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || 'ontouchstart' in window;
-    if (this.isMobile) this.bindTouch(); else this.bindDesktop();
+    // Bind BOTH schemes: many desktops report touch support ('ontouchstart'),
+    // so either/or detection breaks mouse look on touchscreen laptops.
+    this.isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    this.bindDesktop();
+    this.bindTouch();
   }
 
   takeJump() { const v = this._jump; this._jump = false; return v; }
@@ -44,15 +47,21 @@ export class Input {
       if (e.code === 'ShiftLeft') this.sprint = false;
       this.updateKeyAxes();
     });
+    let dragging = false; let lx = 0, ly = 0;
     this.el.addEventListener('mousedown', (e) => {
-      if (document.pointerLockElement !== this.el) { this.el.requestPointerLock(); return; }
+      if (document.pointerLockElement !== this.el) {
+        this.el.requestPointerLock?.();
+        dragging = true; lx = e.clientX; ly = e.clientY; // drag-look fallback if lock denied
+        return;
+      }
       if (e.button === 0) { this._fire = true; this._firing = true; }
       if (e.button === 2) this.ads = true;
     });
-    addEventListener('mouseup', (e) => { if (e.button === 0) this._firing = false; if (e.button === 2) this.ads = false; });
+    addEventListener('mouseup', (e) => { dragging = false; if (e.button === 0) this._firing = false; if (e.button === 2) this.ads = false; });
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === this.el) { this.lookDX += e.movementX; this.lookDY += e.movementY; }
+      else if (dragging) { this.lookDX += e.clientX - lx; this.lookDY += e.clientY - ly; lx = e.clientX; ly = e.clientY; }
     });
   }
 
