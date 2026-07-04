@@ -34,6 +34,7 @@
     #matchbar .you b{color:#52d452}
     #matchbar .enemy b{color:#e6402f}
     #match-timer{color:#f2ede4;background:rgba(10,8,6,0.5);padding:3px 10px;border-radius:4px;letter-spacing:2px}
+    #grace{display:none;position:absolute;top:78px;left:50%;transform:translateX(-50%);color:#ffd23f;font:bold 13px monospace;letter-spacing:3px;text-shadow:0 1px 4px #000;background:rgba(10,8,6,0.45);padding:5px 12px;border-radius:4px}
     #zonepips{position:absolute;top:46px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
     .zpip{width:22px;height:22px;border-radius:50%;background:#888;color:#0a0805;font:bold 12px monospace;display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,0,0,0.4);transition:background .2s}
     #result-overlay{position:fixed;inset:0;z-index:40;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(6,5,4,0.86);backdrop-filter:blur(5px)}
@@ -54,7 +55,7 @@
     @media (hover:hover) and (pointer:fine){ .mbtn{display:none} #hint-d{display:block!important} }
     #hint-d{display:none;position:absolute;bottom:14px;left:16px;color:rgba(242,237,228,0.5);font-size:11px;letter-spacing:1px}
   </style>
-  <script type="module" crossorigin src="./assets/index-Wl05_SF9.js"></script>
+  <script type="module" crossorigin src="./assets/index-wstxyEMx.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/engineStore-3C-rIQ0a.js">
   <link rel="modulepreload" crossorigin href="./assets/domManagement-BqltO0ki.js">
   <link rel="modulepreload" crossorigin href="./assets/logger-CuBYPcDK.js">
@@ -82,7 +83,7 @@
   <link rel="modulepreload" crossorigin href="./assets/flowGraphExecutionBlock-Br-JcCiZ.js">
   <link rel="modulepreload" crossorigin href="./assets/flowGraphExecutionBlockWithOutSignal-D5ze2pSy.js">
   <link rel="modulepreload" crossorigin href="./assets/renderingManager-DEgbTIcS.js">
-  <link rel="modulepreload" crossorigin href="./assets/renderTargetTexture.pure-BfbUkLUa.js">
+  <link rel="modulepreload" crossorigin href="./assets/renderTargetTexture.pure-CVKNyHFO.js">
   <link rel="modulepreload" crossorigin href="./assets/effectRenderer.pure-CUYxv4ZZ.js">
   <link rel="modulepreload" crossorigin href="./assets/textureTools-TpTkVkj-.js">
 </head>
@@ -107,6 +108,7 @@
       <span id="match-timer">3:00</span>
       <span class="score enemy"><b id="score-enemy">0</b></span>
     </div>
+    <div id="grace"></div>
     <div id="zonepips"><span class="zpip" id="zpip-0">A</span><span class="zpip" id="zpip-1">B</span><span class="zpip" id="zpip-2">C</span></div>
     <div id="healthbar"><div id="hp-track"><div id="hp-fill"></div></div><div id="hp-num">100</div></div>
     <button class="mbtn" id="btn-jump">JUMP</button>
